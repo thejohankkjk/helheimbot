@@ -15,10 +15,11 @@ async function findOpenApplication(guildId, userId) {
     .eq('guild_id', guildId)
     .eq('user_id', userId)
     .eq('status', 'em_andamento')
-    .maybeSingle();
+    .order('created_at', { ascending: false })
+    .limit(1);
 
   if (error) throw error;
-  return data;
+  return data && data.length ? data[0] : null;
 }
 
 /** Busca uma aplicação pelo canal do ticket */

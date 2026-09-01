@@ -18,6 +18,7 @@ const { createTicketChannel, runRecruitmentFlow } = require('./src/recruitment')
 const arena = require('./src/arena/commands');
 const arenaAdmin = require('./src/arena/admin');
 const moderation = require('./src/moderation');
+const voice = require('./src/voice');
 
 // Evita que o processo caia por causa de um erro não tratado isolado
 // (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
@@ -50,6 +51,7 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
   ],
   partials: [Partials.Channel],
 });
@@ -74,6 +76,7 @@ client.once('clientReady', async () => {
       arenaAdmin.arenaSlashCommand,
       moderation.suspendCommand,
       moderation.releaseCommand,
+      voice.callCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -134,6 +137,12 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (interaction.isChatInputCommand() && interaction.commandName === 'liberar') {
       await moderation.handleReleaseCommand(interaction);
+      return;
+    }
+
+    // ===== Slash command: /call =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'call') {
+      await voice.handleCallCommand(interaction);
       return;
     }
 

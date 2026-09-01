@@ -1,4 +1,4 @@
-{
+git add .{
   "name": "helheim-recruitment-bot",
   "version": "1.0.0",
   "description": "Bot de recrutamento com sistema de ticket e formulario sequencial para o Discord da Helheim",
@@ -9,9 +9,11 @@
     "deploy": "node src/deploy-commands.js"
   },
   "dependencies": {
+    "@discordjs/voice": "^0.18.0",
     "@supabase/supabase-js": "^2.45.4",
     "discord.js": "^14.26.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "tweetnacl": "^1.0.3"
   },
   "engines": {
     "node": ">=22.0.0"
