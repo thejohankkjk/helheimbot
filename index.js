@@ -85,6 +85,11 @@ client.once('clientReady', async () => {
     await rest.put(Routes.applicationCommands(config.clientId), {
       body: commands,
     });
+
+    // Limpa qualquer comando antigo registrado só pra esse servidor (de antes de virar global),
+    // pra não ficar duplicado na lista do Discord.
+    await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
+
     console.log('[BOT] Slash commands registrados globalmente (pode levar até 1h pra propagar em servidores novos).');
   } catch (err) {
     console.error('[BOT] Falha ao registrar slash commands:', err);
