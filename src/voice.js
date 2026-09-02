@@ -1,5 +1,14 @@
 const { SlashCommandBuilder } = require('discord.js');
-const { joinVoiceChannel, getVoiceConnection, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { Readable } = require('stream');
+const {
+  joinVoiceChannel,
+  getVoiceConnection,
+  VoiceConnectionStatus,
+  entersState,
+  createAudioPlayer,
+  createAudioResource,
+  StreamType,
+} = require('@discordjs/voice');
 
 const callCommand = new SlashCommandBuilder()
   .setName('call')
@@ -8,9 +17,31 @@ const callCommand = new SlashCommandBuilder()
   .addSubcommand((sub) => sub.setName('sair').setDescription('O bot sai do canal de voz'))
   .toJSON();
 
-// Guarda, por servidor, quem chamou o bot pra call e onde avisar se ele cair sozinho.
-// guildId -> { requesterId, textChannelId, leavingOnPurpose }
+// Guarda, por servidor, quem chamou o bot pra call, onde avisar se ele cair, e o player de silêncio.
+// guildId -> { requesterId, textChannelId, leavingOnPurpose, player }
 const voiceSessions = new Map();
+
+// Pacote Opus válido representando silêncio — usado pra manter a conexão de voz
+// viva sem precisar de nenhum codificador de áudio (nenhuma dependência nova).
+const SILENCE_FRAME = Buffer.from([0xf8, 0xff, 0xfe]);
+
+function createSilenceStream() {
+  return new Readable({
+    objectMode: true,
+    read() {
+      this.push(SILENCE_FRAME);
+    },
+  });
+}
+
+function keepConnectionAlive(connection) {
+  const player = createAudioPlayer();
+  const resource = createAudioResource(createSilenceStream(), { inputType: StreamType.Opus });
+  player.on('error', (err) => console.error('[VOICE] Erro no player de silêncio:', err));
+  player.play(resource);
+  connection.subscribe(player);
+  return player;
+}
 
 async function handleCallCommand(interaction) {
   const sub = interaction.options.getSubcommand();
@@ -28,15 +59,17 @@ async function handleCallCommand(interaction) {
         guildId: interaction.guildId,
         adapterCreator: interaction.guild.voiceAdapterCreator,
         selfDeaf: false,
-        selfMute: true, // entra mutado, já que não vai tocar nem transmitir nada
+        selfMute: true, // entra mutado; o "áudio" tocado é só silêncio pra manter a conexão viva
       });
 
       await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+      const player = keepConnectionAlive(connection);
 
       voiceSessions.set(interaction.guildId, {
         requesterId: interaction.user.id,
         textChannelId: interaction.channelId,
         leavingOnPurpose: false,
+        player,
       });
 
       registerDisconnectWatcher(connection, interaction.guildId, interaction.client);
@@ -58,7 +91,10 @@ async function handleCallCommand(interaction) {
 
     // Marca como saída intencional, pra não disparar o aviso de "caí sozinho"
     const session = voiceSessions.get(interaction.guildId);
-    if (session) session.leavingOnPurpose = true;
+    if (session) {
+      session.leavingOnPurpose = true;
+      session.player?.stop();
+    }
 
     connection.destroy();
     await interaction.reply({ content: '👋 Saí do canal de voz.', ephemeral: true });
