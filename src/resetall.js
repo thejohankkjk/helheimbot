@@ -8,7 +8,7 @@ const executingGuilds = new Set();
 
 const resetAllCommand = new SlashCommandBuilder()
   .setName('resetall')
-  .setDescription('.')
+  .setDescription('Reseta a pontuação da Arena')
   .toJSON();
 
 async function handleResetAllCommand(interaction) {
