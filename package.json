@@ -1,7 +1,7 @@
 {
   "name": "helheim-recruitment-bot",
   "version": "1.0.0",
-  "description": "Bot de recrutamento com sistema de ticket e formulario sequencial para o Discord da Helheim",
+  "description": "Bot de recrutamento com sistema de tickets e formulario sequencial para o Discord da Helheim",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
