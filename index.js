@@ -19,6 +19,7 @@ const arena = require('./src/arena/commands');
 const arenaAdmin = require('./src/arena/admin');
 const moderation = require('./src/moderation');
 const voice = require('./src/voice');
+const resetall = require('./src/resetall');
 
 // Evita que o processo caia por causa de um erro não tratado isolado
 // (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
@@ -77,6 +78,7 @@ client.once('clientReady', async () => {
       moderation.suspendCommand,
       moderation.releaseCommand,
       voice.callCommand,
+      resetall.resetAllCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -143,6 +145,12 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /call =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'call') {
       await voice.handleCallCommand(interaction);
+      return;
+    }
+
+    // ===== Slash command: /resetall =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'resetall') {
+      await resetall.handleResetAllCommand(interaction);
       return;
     }
 
