@@ -12,6 +12,7 @@ const PANEL_ROW = new ActionRowBuilder().addComponents(
 
 function isModerator(interactionMember) {
   return (
+    config.superAdminIds.includes(interactionMember.id) ||
     interactionMember.roles.cache.has(config.staffRoleId) ||
     config.arenaAdminRoleIds.some((roleId) => interactionMember.roles.cache.has(roleId))
   );
