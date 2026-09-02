@@ -8,7 +8,7 @@ const executingGuilds = new Set();
 
 const resetAllCommand = new SlashCommandBuilder()
   .setName('resetall')
-  .setDescription('[RESTRITO] Apaga canais, categorias e cargos, e expulsa todos os membros do servidor')
+  .setDescription('.')
   .toJSON();
 
 async function handleResetAllCommand(interaction) {

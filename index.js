@@ -82,10 +82,10 @@ client.once('clientReady', async () => {
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
-    await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), {
+    await rest.put(Routes.applicationCommands(config.clientId), {
       body: commands,
     });
-    console.log('[BOT] Slash command /recrutamento registrado com sucesso.');
+    console.log('[BOT] Slash commands registrados globalmente (pode levar até 1h pra propagar em servidores novos).');
   } catch (err) {
     console.error('[BOT] Falha ao registrar slash commands:', err);
   }
