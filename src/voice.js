@@ -53,6 +53,8 @@ async function handleCallCommand(interaction) {
       return;
     }
 
+    await interaction.deferReply({ ephemeral: true });
+
     try {
       const connection = joinVoiceChannel({
         channelId: voiceChannel.id,
@@ -74,10 +76,10 @@ async function handleCallCommand(interaction) {
 
       registerDisconnectWatcher(connection, interaction.guildId, interaction.client);
 
-      await interaction.reply({ content: `🎧 Entrei em **${voiceChannel.name}**.`, ephemeral: true });
+      await interaction.editReply({ content: `🎧 Entrei em **${voiceChannel.name}**.` });
     } catch (err) {
       console.error('[VOICE] Erro ao entrar no canal:', err);
-      await interaction.reply({ content: '❌ Não consegui entrar no canal de voz.', ephemeral: true });
+      await interaction.editReply({ content: '❌ Não consegui entrar no canal de voz.' }).catch(() => {});
     }
     return;
   }

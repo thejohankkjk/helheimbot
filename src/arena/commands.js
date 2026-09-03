@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, OverwriteType } = require('discord.js');
 const config = require('../config');
 const db = require('./db');
 const embeds = require('./embeds');
@@ -12,7 +12,6 @@ const PANEL_ROW = new ActionRowBuilder().addComponents(
 
 function isModerator(interactionMember) {
   return (
-    config.superAdminIds.includes(interactionMember.id) ||
     interactionMember.roles.cache.has(config.staffRoleId) ||
     config.arenaAdminRoleIds.some((roleId) => interactionMember.roles.cache.has(roleId))
   );
@@ -159,12 +158,25 @@ async function createMatchChannel(guild, userAId, userBId) {
     type: ChannelType.GuildText,
     parent: categoryId || null,
     permissionOverwrites: [
-      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-      { id: userAId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-      { id: userBId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-      { id: config.staffRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
+      { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
+      {
+        id: userAId,
+        type: OverwriteType.Member,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+      },
+      {
+        id: userBId,
+        type: OverwriteType.Member,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+      },
+      {
+        id: config.staffRoleId,
+        type: OverwriteType.Role,
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
+      },
       ...config.arenaAdminRoleIds.map((roleId) => ({
         id: roleId,
+        type: OverwriteType.Role,
         allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
       })),
     ],
@@ -304,16 +316,21 @@ async function handleResult(interaction) {
   if (config.arenaLogChannelId) {
     const logChannel = await interaction.guild.channels.fetch(config.arenaLogChannelId).catch(() => null);
     if (logChannel) {
-      const resultLine = kind === '3x0' ? 'Vitória 3 a 0' : 'Vitória com round perdido';
+      const scoreLine = kind === '3x0' ? '3 × 0' : 'Vitória (round perdido)';
+      const finishedUnix = Math.floor(new Date(closed.finished_at).getTime() / 1000);
+
       await logChannel
         .send(
           `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘\n\n` +
-            `## 🏆 Resultado da partida\n\n` +
-            `> 🥇<@${winnerId}> saiu vitorioso do confronto direto contra <@${loserId}>!\n\n` +
-            `**<@${winnerId}> recebeu +${winnerDelta} pontos.** (${winnerResult.after}pts)\n` +
-            `💀 <@${loserId}> perdeu ${loserDelta} pontos (${loserResult.after} pts)\n\n` +
-            `🔥 <@${winnerId}> agora está com **${winnerResult.player.current_streak} vitórias seguidas!**\n` +
-            `**${resultLine}**`
+            `## 🏆 <@${winnerId}> venceu\n\n` +
+            `\`M-${closed.match_number}\` · ⚔️ 1v1 MD5 · encerrada <t:${finishedUnix}:R>\n\n` +
+            `## ${scoreLine}\n\n` +
+            `🏆 **<@${winnerId}>**\n` +
+            `🗡️ ${winnerResult.before} → ${winnerResult.after} **+${winnerDelta}**\n\n` +
+            `💀 **<@${loserId}>**\n` +
+            `🛡️ ${loserResult.before} → ${loserResult.after} **${loserDelta}**\n\n` +
+            `🔥 <@${winnerId}> está com **${winnerResult.player.current_streak} vitórias seguidas!**\n` +
+            `> Confirmado pela Moderação (<@${interaction.user.id}>).`
         )
         .catch(() => {});
     }

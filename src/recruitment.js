@@ -4,6 +4,7 @@ const {
   ButtonStyle,
   ChannelType,
   PermissionFlagsBits,
+  OverwriteType,
 } = require('discord.js');
 const config = require('./config');
 const questions = require('./questions');
@@ -21,9 +22,10 @@ async function createTicketChannel(guild, member) {
     type: ChannelType.GuildText,
     parent: config.ticketCategoryId || null,
     permissionOverwrites: [
-      { id: guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
+      { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
       {
         id: member.id,
+        type: OverwriteType.Member,
         allow: [
           PermissionFlagsBits.ViewChannel,
           PermissionFlagsBits.SendMessages,
@@ -32,6 +34,7 @@ async function createTicketChannel(guild, member) {
       },
       {
         id: config.staffRoleId,
+        type: OverwriteType.Role,
         allow: [
           PermissionFlagsBits.ViewChannel,
           PermissionFlagsBits.SendMessages,
