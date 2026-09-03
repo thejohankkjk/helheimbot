@@ -280,7 +280,7 @@ async function handleResult(interaction) {
 
   const winnerDelta = kind === '3x0' ? 25 : 15;
   const loserDelta = kind === '3x0' ? -25 : -10;
-  const resultLabel = kind === '3x0' ? '3x0' : 'Vitória com Round perdido';
+  const scoreLine = kind === '3x0' ? '3 × 0' : 'Vitória (round perdido)';
 
   // Fecha a partida de forma atômica (evita registro duplicado em cliques simultâneos)
   const closed = await db.closeMatch(matchId, {
@@ -300,39 +300,29 @@ async function handleResult(interaction) {
   await db.setStatus(match.guild_id, winnerId, 'idle', null);
   await db.setStatus(match.guild_id, loserId, 'idle', null);
 
-  await interaction.editReply({
-    embeds: [
-      embeds.resultEmbed({
-        winnerId,
-        loserId,
-        resultLabel,
-        winnerBefore: winnerResult.before,
-        winnerAfter: winnerResult.after,
-        loserBefore: loserResult.before,
-        loserAfter: loserResult.after,
-      }),
-    ],
+  const winnerUser = await interaction.client.users.fetch(winnerId).catch(() => null);
+
+  const resultEmbedPayload = embeds.resultEmbed({
+    winnerId,
+    loserId,
+    winnerUser,
+    matchNumber: closed.match_number,
+    finishedAt: closed.finished_at,
+    scoreLine,
+    winnerBefore: winnerResult.before,
+    winnerAfter: winnerResult.after,
+    loserBefore: loserResult.before,
+    loserAfter: loserResult.after,
+    currentStreak: winnerResult.player.current_streak,
+    moderatorId: interaction.user.id,
   });
+
+  await interaction.editReply({ embeds: [resultEmbedPayload] });
 
   if (config.arenaLogChannelId) {
     const logChannel = await interaction.guild.channels.fetch(config.arenaLogChannelId).catch(() => null);
     if (logChannel) {
-      const scoreLine = kind === '3x0' ? '3 × 0' : 'Vitória (round perdido)';
-      const finishedUnix = Math.floor(new Date(closed.finished_at).getTime() / 1000);
-
-      await logChannel
-        .send(
-          `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘\n\n` +
-            `## 🏆 <@${winnerId}> venceu\n\n` +
-            `\`M-${closed.match_number}\` · ⚔️ 1v1 MD5 · encerrada <t:${finishedUnix}:R>\n\n` +
-            `## ${scoreLine}\n\n` +
-            `🏆 **<@${winnerId}>**\n` +
-            `🗡️ ${winnerResult.before} → ${winnerResult.after} **+${winnerDelta}**\n\n` +
-            `💀 **<@${loserId}>**\n` +
-            `🛡️ ${loserResult.before} → ${loserResult.after} **${loserDelta}**\n\n` +
-            `🔥 <@${winnerId}> está com **${winnerResult.player.current_streak} vitórias seguidas!**\n` +
-            `> Confirmado pela Moderação (<@${interaction.user.id}>).`
-        )
+      await logChannel.send({ embeds: [resultEmbedPayload] })
         .catch(() => {});
     }
   }

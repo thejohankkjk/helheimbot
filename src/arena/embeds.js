@@ -70,24 +70,43 @@ function combatGuidelinesEmbed() {
     );
 }
 
-function resultEmbed({ winnerId, loserId, resultLabel, winnerBefore, winnerAfter, loserBefore, loserAfter }) {
+function resultEmbed({
+  winnerId,
+  loserId,
+  winnerUser,
+  matchNumber,
+  finishedAt,
+  scoreLine,
+  winnerBefore,
+  winnerAfter,
+  loserBefore,
+  loserAfter,
+  currentStreak,
+  moderatorId,
+}) {
   const winnerDelta = winnerAfter - winnerBefore;
   const loserDelta = loserAfter - loserBefore;
-  return new EmbedBuilder()
-    .setColor(0x2ecc71)
-    .setTitle(`🏆 ${config.theme.name} ・ RESULTADO DO CONFRONTO`)
-    .setDescription('> O combate chegou ao fim.')
+  const finishedUnix = Math.floor(new Date(finishedAt).getTime() / 1000);
+
+  const embed = new EmbedBuilder()
+    .setColor(0xf1c40f)
+    .setTitle(`🏆 ${winnerUser?.username ?? 'Guerreiro'} venceu`)
+    .setDescription(`\`M-${matchNumber}\` · ⚔️ 1v1 MD5 · encerrada <t:${finishedUnix}:R>`)
     .addFields(
-      {
-        name: '🏆 VENCEDOR',
-        value: `<@${winnerId}>\n⚔️ Resultado: **${resultLabel}**\n📈 Pontos: ${winnerBefore} → ${winnerAfter} (**+${winnerDelta}**)`,
-      },
-      {
-        name: '💀 DERROTADO',
-        value: `<@${loserId}>\n📉 Pontos: ${loserBefore} → ${loserAfter} (**${loserDelta}**)`,
-      }
-    )
-    .setFooter({ text: 'O confronto foi registrado pela Moderação • bot by johankkjk' });
+      { name: 'Placar', value: `\`\`\`${scoreLine}\`\`\`` },
+      { name: '🏆 Vencedor', value: `<@${winnerId}>\n🗡️ ${winnerBefore} → ${winnerAfter} **+${winnerDelta}**`, inline: true },
+      { name: '💀 Derrotado', value: `<@${loserId}>\n🛡️ ${loserBefore} → ${loserAfter} **${loserDelta}**`, inline: true }
+    );
+
+  if (currentStreak >= 2) {
+    embed.addFields({ name: '\u200b', value: `🔥 <@${winnerId}> está com **${currentStreak} vitórias seguidas!**` });
+  }
+
+  if (winnerUser) embed.setThumbnail(winnerUser.displayAvatarURL());
+
+  embed.setFooter({ text: 'Confirmado pela Moderação • bot by johankkjk' });
+
+  return embed;
 }
 
 function cancelledEmbed(moderatorId) {
