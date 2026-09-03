@@ -1,4 +1,4 @@
-gconst { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, OverwriteType } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, OverwriteType } = require('discord.js');
 const config = require('../config');
 const db = require('./db');
 const embeds = require('./embeds');
