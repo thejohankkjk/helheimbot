@@ -1,4 +1,4 @@
-giconst { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const db = require('./arena/db');
 const { isModerator } = require('./arena/commands');
 
