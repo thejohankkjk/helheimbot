@@ -80,11 +80,7 @@ async function handleJoinQueue(interaction) {
   await postMatchRoom(channel, match);
   await announceInArenaChannel(
     interaction.guild,
-    `⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘⫘\n` +
-      `## 🔍 PARTIDA ACEITA\n\n` +
-      `> <@${opponent.discord_id}> ⚔️ <@${userId}>\n\n` +
-      `🩸 <@${opponent.discord_id}> irá enfrentar <@${userId}> em uma partida MD5 **[Melhor de 5]**\n\n` +
-      `**Que o confronto se inicie, e vença o melhor! ⚔️🔥**`
+    { embeds: [embeds.matchAcceptedAnnouncementEmbed(opponent.discord_id, userId)] }
   );
 }
 
@@ -109,11 +105,12 @@ function scheduleQueueTimeout(guildId, userId, queuedAtIso, guild) {
   }, QUEUE_TIMEOUT_MS);
 }
 
-async function announceInArenaChannel(guild, content) {
+async function announceInArenaChannel(guild, payload) {
   if (!config.arenaChannelId) return null;
   const channel = await guild.channels.fetch(config.arenaChannelId).catch(() => null);
   if (!channel) return null;
-  return channel.send(content).catch(() => null);
+  const message = typeof payload === 'string' ? { content: payload } : payload;
+  return channel.send(message).catch(() => null);
 }
 
 /** Apaga a mensagem de "buscando partida" de um jogador, se existir */

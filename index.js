@@ -21,6 +21,7 @@ const moderation = require('./src/moderation');
 const voice = require('./src/voice');
 const resetall = require('./src/resetall');
 const criar = require('./src/criar');
+const editar = require('./src/editar');
 
 // Evita que o processo caia por causa de um erro não tratado isolado
 // (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
@@ -81,6 +82,7 @@ client.once('clientReady', async () => {
       voice.callCommand,
       resetall.resetAllCommand,
       criar.criarCommand,
+      editar.editarCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -164,6 +166,12 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /criar =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'criar') {
       await criar.handleCriarCommand(interaction);
+      return;
+    }
+
+    // ===== Slash command: /editar =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'editar') {
+      await editar.handleEditarCommand(interaction);
       return;
     }
 

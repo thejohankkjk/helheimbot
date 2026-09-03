@@ -160,10 +160,23 @@ function profileEmbed(member, player, position) {
     );
 }
 
+function matchAcceptedAnnouncementEmbed(player1Id, player2Id) {
+  return new EmbedBuilder()
+    .setColor(ARENA_COLOR)
+    .setTitle('🔍 Partida Aceita')
+    .setDescription(`> <@${player1Id}> ⚔️ <@${player2Id}>`)
+    .addFields({
+      name: '🩸 Confronto',
+      value: `<@${player1Id}> irá enfrentar <@${player2Id}> em uma partida **MD5** *(Melhor de 5)*`,
+    })
+    .setFooter({ text: 'Que o confronto se inicie, e vença o melhor! ⚔️🔥' });
+}
+
 module.exports = {
   panelEmbed,
   queueEmbed,
   matchEmbed,
+  matchAcceptedAnnouncementEmbed,
   vipLinkEmbed,
   combatGuidelinesEmbed,
   resultEmbed,

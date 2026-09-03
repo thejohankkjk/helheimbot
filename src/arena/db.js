@@ -229,6 +229,32 @@ function isSuspended(player) {
   return Boolean(player.suspended_until) && new Date(player.suspended_until).getTime() > Date.now();
 }
 
+async function setWins(guildId, discordId, wins) {
+  await getOrCreatePlayer(guildId, discordId);
+  const { data, error } = await supabase
+    .from(PLAYERS)
+    .update({ wins, updated_at: new Date().toISOString() })
+    .eq('guild_id', guildId)
+    .eq('discord_id', discordId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function setLosses(guildId, discordId, losses) {
+  await getOrCreatePlayer(guildId, discordId);
+  const { data, error } = await supabase
+    .from(PLAYERS)
+    .update({ losses, updated_at: new Date().toISOString() })
+    .eq('guild_id', guildId)
+    .eq('discord_id', discordId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
 module.exports = {
   STARTING_POINTS,
   getOrCreatePlayer,
@@ -239,6 +265,8 @@ module.exports = {
   closeMatch,
   addPoints,
   setPoints,
+  setWins,
+  setLosses,
   getRanking,
   getRankPosition,
   getOngoingMatches,
