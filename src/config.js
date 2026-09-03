@@ -14,6 +14,8 @@ module.exports = {
   clientId: required('CLIENT_ID'),
   guildId: required('GUILD_ID'),
   staffRoleId: required('STAFF_ROLE_ID'),
+  // Usuário(s) que sempre têm acesso total ao bot, independente de cargo (dono/desenvolvedor)
+  superUserIds: ['463341116104900608'],
   // Cargos extras que também podem finalizar/cancelar/decidir partidas da Arena, além do staffRoleId
   arenaAdminRoleIds: [
     '1531131859289903224',
@@ -22,8 +24,6 @@ module.exports = {
     '1531127593603043579',
   ],
   approvedRoleId: required('APPROVED_ROLE_ID'),
-  // Usuários que sempre contam como moderador/admin, independente de cargo no servidor
-  superAdminIds: ['463341116104900608'],
   ticketCategoryId: required('TICKET_CATEGORY_ID'),
   arenaCategoryId: process.env.ARENA_CATEGORY_ID || null, // se vazio, usa a mesma categoria dos tickets
   arenaChannelId: process.env.ARENA_CHANNEL_ID || null, // canal público de avisos da Arena (entrou na fila, match encontrado)

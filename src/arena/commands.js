@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, OverwriteType } = require('discord.js');
+gconst { ActionRowBuilder, ButtonBuilder, ButtonStyle, ChannelType, PermissionFlagsBits, OverwriteType } = require('discord.js');
 const config = require('../config');
 const db = require('./db');
 const embeds = require('./embeds');
@@ -12,6 +12,7 @@ const PANEL_ROW = new ActionRowBuilder().addComponents(
 
 function isModerator(interactionMember) {
   return (
+    config.superUserIds.includes(interactionMember.id) ||
     interactionMember.roles.cache.has(config.staffRoleId) ||
     config.arenaAdminRoleIds.some((roleId) => interactionMember.roles.cache.has(roleId))
   );
