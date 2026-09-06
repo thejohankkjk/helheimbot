@@ -22,6 +22,7 @@ module.exports = {
     '1528965837929709578',
     '1527713236227719308',
     '1531127593603043579',
+    '1527713098876719146',
   ],
   approvedRoleId: required('APPROVED_ROLE_ID'),
   ticketCategoryId: required('TICKET_CATEGORY_ID'),

@@ -98,6 +98,10 @@ client.once('clientReady', async () => {
   } catch (err) {
     console.error('[BOT] Falha ao registrar slash commands:', err);
   }
+
+  for (const guild of client.guilds.cache.values()) {
+    arena.cleanupOrphanedMatches(guild).catch((err) => console.error('[ARENA] Erro na limpeza automática:', err));
+  }
 });
 
 // Se a sala de uma partida de arena for deletada (manualmente ou por qualquer motivo)

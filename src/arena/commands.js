@@ -431,6 +431,25 @@ async function handleChannelDeleted(channel) {
   );
 }
 
+/** Roda ao ligar o bot: verifica se alguma partida "em andamento" no banco tem uma sala
+ *  que não existe mais (ex: apagada enquanto o bot estava reiniciando) e libera os jogadores. */
+async function cleanupOrphanedMatches(guild) {
+  const ongoing = await db.getOngoingMatches(guild.id).catch(() => []);
+  for (const match of ongoing) {
+    const channelExists = await guild.channels.fetch(match.channel_id).catch(() => null);
+    if (channelExists) continue;
+
+    const closed = await db.closeMatch(match.id, { status: 'cancelled', result_type: 'sala_inexistente' }).catch(() => null);
+    if (!closed) continue;
+
+    await Promise.all([
+      db.setStatus(match.guild_id, match.player1_id, 'idle', null),
+      db.setStatus(match.guild_id, match.player2_id, 'idle', null),
+    ]);
+    console.log(`[ARENA] Limpeza automática: partida ${match.id} tinha sala inexistente, jogadores liberados.`);
+  }
+}
+
 module.exports = {
   sendPanel,
   handleJoinQueue,
@@ -441,5 +460,6 @@ module.exports = {
   handleCancel,
   handleAbandon,
   handleChannelDeleted,
+  cleanupOrphanedMatches,
   isModerator,
 };
