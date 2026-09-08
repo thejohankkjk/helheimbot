@@ -102,7 +102,9 @@ function approvedEmbed(member) {
     .setTitle('✅ Recrutamento aprovado!')
     .setDescription(
       `Parabéns, <@${member.id}>! Suas respostas foram registradas e você foi **aprovado(a)** automaticamente.\n\n` +
-        `Você já recebeu o cargo correspondente. Seja bem-vindo(a) à **${config.theme.name}**! 🩸`
+        `Você já recebeu o cargo correspondente. Seja bem-vindo(a) à **${config.theme.name}**! 🩸\n\n` +
+        `Teremos que só te avaliar jogando agora, pra o veredito final da sua aprovação!\n` +
+        `Aguarde algum recrutador comparecer no horário marcado como disponível, e siga as instruções dele.`
     )
     .setFooter({ text: config.theme.footer })
     .setTimestamp();
@@ -117,6 +119,9 @@ function transcriptEmbed(application, member) {
     .setTimestamp();
 
   application.answers.forEach((a, i) => {
+    if (i === questions.length) {
+      embed.addFields({ name: '\u200b', value: '⫘'.repeat(30) });
+    }
     embed.addFields({ name: `${i + 1}. ${a.question}`, value: a.answer || '—' });
   });
 
