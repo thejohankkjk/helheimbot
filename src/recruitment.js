@@ -12,9 +12,11 @@ const config = require('./config');
 const questions = require('./questions');
 const db = require('./supabase');
 const embeds = require('./embeds');
+const { isModerator } = require('./arena/commands');
 
 const CHOICE_PREFIX = 'rec_choice';
 const TIME_PERIOD_SELECT_ID = 'rec_time_period_select';
+const FINISH_RECRUITMENT_BUTTON_ID = 'finish_recruitment';
 
 /** Cria o canal privado (ticket) para o recrutamento */
 async function createTicketChannel(guild, member) {
@@ -266,25 +268,23 @@ async function finalizeApproval(channel, member, application) {
 
   const finished = await db.finishApplication(application.id, 'aprovado', 'auto');
 
-  await channel.send({ embeds: [embeds.approvedEmbed(member)] });
-
-  // Renomeia o canal para indicar que o recrutamento foi concluído
+  // Renomeia o canal só pra indicar que a parte escrita terminou — o ticket continua
+  // ABERTO até um staff clicar em "Finalizar Recrutamento" depois da avaliação prática.
   const safeName = member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'user';
-  await channel.setName(`finalizado-${safeName}`).catch(() => {});
+  await channel.setName(`avaliar-${safeName}`).catch(() => {});
 
-  // Trava o envio de mensagens imediatamente
-  await channel.permissionOverwrites.edit(member.id, { SendMessages: false }).catch(() => {});
+  const finishRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`${FINISH_RECRUITMENT_BUTTON_ID}:${member.id}`)
+      .setLabel('Finalizar Recrutamento')
+      .setStyle(ButtonStyle.Success)
+      .setEmoji('✅')
+  );
 
-  // Após 20 segundos, some com a visibilidade do canal pro usuário.
-  // O canal continua existindo e visível só para a staff (histórico/registro).
-  setTimeout(() => {
-    channel.permissionOverwrites.edit(member.id, { ViewChannel: false, SendMessages: false }).catch(() => {});
-  }, 20_000);
-
-  // Após 5 minutos, o canal é apagado por completo — dando tempo da staff ler antes de sumir.
-  setTimeout(() => {
-    channel.delete('Ticket de recrutamento finalizado').catch(() => {});
-  }, 5 * 60 * 1000);
+  await channel.send({ embeds: [embeds.approvedEmbed(member)], components: [finishRow] });
+  await channel.send({
+    content: '👮 **Staff:** depois de avaliar essa pessoa jogando, clique no botão acima pra finalizar e fechar esse ticket.',
+  });
 
   if (config.logChannelId) {
     const logChannel = await channel.guild.channels.fetch(config.logChannelId).catch(() => null);
@@ -302,7 +302,38 @@ async function finalizeApproval(channel, member, application) {
   }
 }
 
+/** Botão "Finalizar Recrutamento" — só staff pode usar, fecha o ticket depois da avaliação prática */
+async function handleFinishRecruitmentButton(interaction) {
+  const [, candidateId] = interaction.customId.split(':');
+
+  if (!isModerator(interaction.member)) {
+    await interaction.reply({ content: '⛔ Só a staff pode finalizar esse recrutamento.', ephemeral: true });
+    return;
+  }
+
+  await interaction.reply(
+    `✅ Recrutamento de <@${candidateId}> finalizado por <@${interaction.user.id}>. Esse ticket vai se fechar em instantes.`
+  );
+
+  const channel = interaction.channel;
+
+  // Trava o envio de mensagens imediatamente
+  await channel.permissionOverwrites.edit(candidateId, { SendMessages: false }).catch(() => {});
+
+  // Após 20 segundos, some com a visibilidade do canal pro candidato (staff continua vendo)
+  setTimeout(() => {
+    channel.permissionOverwrites.edit(candidateId, { ViewChannel: false, SendMessages: false }).catch(() => {});
+  }, 20_000);
+
+  // Após 5 minutos, apaga o canal por completo
+  setTimeout(() => {
+    channel.delete('Recrutamento finalizado pela staff').catch(() => {});
+  }, 5 * 60 * 1000);
+}
+
 module.exports = {
   createTicketChannel,
   runRecruitmentFlow,
+  handleFinishRecruitmentButton,
+  FINISH_RECRUITMENT_BUTTON_ID,
 };

@@ -14,7 +14,7 @@ const {
 const config = require('./src/config');
 const db = require('./src/supabase');
 const embeds = require('./src/embeds');
-const { createTicketChannel, runRecruitmentFlow } = require('./src/recruitment');
+const { createTicketChannel, runRecruitmentFlow, handleFinishRecruitmentButton, FINISH_RECRUITMENT_BUTTON_ID } = require('./src/recruitment');
 const arena = require('./src/arena/commands');
 const arenaAdmin = require('./src/arena/admin');
 const moderation = require('./src/moderation');
@@ -184,6 +184,12 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /adicionar =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'adicionar') {
       await adicionar.handleAdicionarCommand(interaction);
+      return;
+    }
+
+    // ===== Botão: Finalizar Recrutamento (staff) =====
+    if (interaction.isButton() && interaction.customId.startsWith(`${FINISH_RECRUITMENT_BUTTON_ID}:`)) {
+      await handleFinishRecruitmentButton(interaction);
       return;
     }
 
