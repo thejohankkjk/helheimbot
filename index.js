@@ -23,7 +23,6 @@ const resetall = require('./src/resetall');
 const criar = require('./src/criar');
 const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
-const schedule = require('./src/schedule');
 
 // Evita que o processo caia por causa de um erro não tratado isolado
 // (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
@@ -86,7 +85,6 @@ client.once('clientReady', async () => {
       criar.criarCommand,
       editar.editarCommand,
       adicionar.adicionarCommand,
-      schedule.painelCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -186,24 +184,6 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /adicionar =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'adicionar') {
       await adicionar.handleAdicionarCommand(interaction);
-      return;
-    }
-
-    // ===== /painel rec2 e seus componentes =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'painel') {
-      await schedule.handlePainelCommand(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId === schedule.START_BUTTON_ID) {
-      await schedule.handleStartButton(interaction);
-      return;
-    }
-    if (interaction.isStringSelectMenu() && interaction.customId === schedule.TIME_SELECT_ID) {
-      await schedule.handleTimeSelect(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId === schedule.FINISH_BUTTON_ID) {
-      await schedule.handleFinishButton(interaction);
       return;
     }
 

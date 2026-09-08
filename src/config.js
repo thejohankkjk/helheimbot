@@ -31,7 +31,8 @@ module.exports = {
   // Canal que recebe o histórico/resultado das partidas da Arena (diferente do log de recrutamento!)
   arenaLogChannelId: process.env.ARENA_LOG_CHANNEL_ID || '1543939733108035725',
   logChannelId: process.env.LOG_CHANNEL_ID || null, // canal de log do RECRUTAMENTO
-  scheduleLogChannelId: process.env.SCHEDULE_LOG_CHANNEL_ID || '1546701357325492224',
+  recruitmentLogPingRoleId: '1527713098876719146', // cargo mencionado no log ao finalizar recrutamento
+  recruitmentPingRoleId: process.env.RECRUITMENT_PING_ROLE_ID || '1527713098876719146',
 
   supabaseUrl: required('SUPABASE_URL'),
   supabaseKey: required('SUPABASE_SERVICE_ROLE_KEY'),
