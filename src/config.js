@@ -31,6 +31,7 @@ module.exports = {
   // Canal que recebe o histórico/resultado das partidas da Arena (diferente do log de recrutamento!)
   arenaLogChannelId: process.env.ARENA_LOG_CHANNEL_ID || '1543939733108035725',
   logChannelId: process.env.LOG_CHANNEL_ID || null, // canal de log do RECRUTAMENTO
+  scheduleLogChannelId: process.env.SCHEDULE_LOG_CHANNEL_ID || '1546701357325492224',
 
   supabaseUrl: required('SUPABASE_URL'),
   supabaseKey: required('SUPABASE_SERVICE_ROLE_KEY'),
