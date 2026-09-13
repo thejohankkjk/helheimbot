@@ -20,6 +20,7 @@ const arenaAdmin = require('./src/arena/admin');
 const moderation = require('./src/moderation');
 const voice = require('./src/voice');
 const resetall = require('./src/resetall');
+const banCmd = require('./src/ban');
 const criar = require('./src/criar');
 const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
@@ -85,6 +86,7 @@ client.once('clientReady', async () => {
       criar.criarCommand,
       editar.editarCommand,
       adicionar.adicionarCommand,
+      banCmd.banCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -184,6 +186,12 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /adicionar =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'adicionar') {
       await adicionar.handleAdicionarCommand(interaction);
+      return;
+    }
+
+    // ===== Slash command: /ban =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'ban') {
+      await banCmd.handleBanCommand(interaction);
       return;
     }
 
