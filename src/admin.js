@@ -1,6 +1,5 @@
 const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const db = require('./db');
-const embeds = require('./embeds');
 const { sendPanel, isModerator } = require('./commands');
 
 const arenaSlashCommand = new SlashCommandBuilder()

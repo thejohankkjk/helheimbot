@@ -24,6 +24,8 @@ const banCmd = require('./src/ban');
 const criar = require('./src/criar');
 const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
+const automod = require('./src/automod/index');
+const automodCommands = require('./src/automod/commands');
 
 // Evita que o processo caia por causa de um erro não tratado isolado
 // (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
@@ -87,6 +89,9 @@ client.once('clientReady', async () => {
       editar.editarCommand,
       adicionar.adicionarCommand,
       banCmd.banCommand,
+      automodCommands.modconfigCommand,
+      automodCommands.automodCommand,
+      automodCommands.modpermCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -106,6 +111,9 @@ client.once('clientReady', async () => {
   for (const guild of client.guilds.cache.values()) {
     arena.cleanupOrphanedMatches(guild).catch((err) => console.error('[ARENA] Erro na limpeza automática:', err));
   }
+
+  automod.registerAutomodListeners(client);
+  console.log('[AUTOMOD] Listeners anti-raid ativos.');
 });
 
 // Se a sala de uma partida de arena for deletada (manualmente ou por qualquer motivo)
@@ -192,6 +200,20 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /ban =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'ban') {
       await banCmd.handleBanCommand(interaction);
+      return;
+    }
+
+    // ===== Slash commands: /modconfig, /automod, /modperm =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'modconfig') {
+      await automodCommands.handleModconfigCommand(interaction);
+      return;
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === 'automod') {
+      await automodCommands.handleAutomodCommand(interaction);
+      return;
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === 'modperm') {
+      await automodCommands.handleModpermCommand(interaction);
       return;
     }
 

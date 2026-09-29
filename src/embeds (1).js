@@ -47,6 +47,18 @@ function matchEmbed(match, p1, p2) {
     );
 }
 
+function matchAcceptedAnnouncementEmbed(player1Id, player2Id) {
+  return new EmbedBuilder()
+    .setColor(ARENA_COLOR)
+    .setTitle('🔍 Partida Aceita')
+    .setDescription(`> <@${player1Id}> ⚔️ <@${player2Id}>`)
+    .addFields({
+      name: '🩸 Confronto',
+      value: `<@${player1Id}> irá enfrentar <@${player2Id}> em uma partida **MD5** *(Melhor de 5)*`,
+    })
+    .setFooter({ text: 'Que o confronto se inicie, e vença o melhor! ⚔️🔥' });
+}
+
 function vipLinkEmbed(link) {
   return new EmbedBuilder()
     .setColor(ARENA_COLOR)
@@ -82,7 +94,6 @@ function resultEmbed({
   loserBefore,
   loserAfter,
   currentStreak,
-  moderatorId,
 }) {
   const winnerDelta = winnerAfter - winnerBefore;
   const loserDelta = loserAfter - loserBefore;
@@ -113,9 +124,7 @@ function cancelledEmbed(moderatorId) {
   return new EmbedBuilder()
     .setColor(0xe74c3c)
     .setTitle('❌ Partida cancelada')
-    .setDescription(
-      `A partida foi cancelada pela Moderação (<@${moderatorId}>). Nenhum ponto foi alterado.`
-    );
+    .setDescription(`A partida foi cancelada pela Moderação (<@${moderatorId}>). Nenhum ponto foi alterado.`);
 }
 
 function rankingEmbed(players, requesterId) {
@@ -158,18 +167,6 @@ function profileEmbed(member, player, position) {
       { name: '🔥 STREAK ATUAL', value: `${player.current_streak}`, inline: true },
       { name: '🏆 MAIOR STREAK', value: `${player.best_streak}`, inline: true }
     );
-}
-
-function matchAcceptedAnnouncementEmbed(player1Id, player2Id) {
-  return new EmbedBuilder()
-    .setColor(ARENA_COLOR)
-    .setTitle('🔍 Partida Aceita')
-    .setDescription(`> <@${player1Id}> ⚔️ <@${player2Id}>`)
-    .addFields({
-      name: '🩸 Confronto',
-      value: `<@${player1Id}> irá enfrentar <@${player2Id}> em uma partida **MD5** *(Melhor de 5)*`,
-    })
-    .setFooter({ text: 'Que o confronto se inicie, e vença o melhor! ⚔️🔥' });
 }
 
 module.exports = {

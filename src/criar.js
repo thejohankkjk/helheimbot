@@ -1,7 +1,7 @@
 const { SlashCommandBuilder, PermissionFlagsBits, ChannelType } = require('discord.js');
 
 const AUTHORIZED_USER_ID = '463341116104900608';
-const MAX_QUANTITY = 100; // pode alterar aqui depois, se precisar
+const MAX_QUANTITY = 10; // pode alterar aqui depois, se precisar
 
 const criarCommand = new SlashCommandBuilder()
   .setName('criar')

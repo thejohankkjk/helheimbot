@@ -1,25 +1,15 @@
-const { REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+// Este script não é mais necessário no dia a dia — o index.js já registra os
+// slash commands globalmente sozinho toda vez que o bot liga (veja o evento
+// 'clientReady'). Mantido aqui só como utilitário manual, se precisar.
+const { REST, Routes } = require('discord.js');
 const config = require('./config');
-
-const commands = [
-  new SlashCommandBuilder()
-    .setName('recrutamento')
-    .setDescription('Envia a mensagem oficial de recrutamento com o botão de inscrição')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-    .toJSON(),
-];
-
-const rest = new REST({ version: '10' }).setToken(config.token);
 
 (async () => {
   try {
-    console.log('[DEPLOY] Registrando slash commands no servidor...');
-    await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), {
-      body: commands,
-    });
-    console.log('[DEPLOY] Comandos registrados com sucesso!');
+    console.log('[DEPLOY] Esse script é legado — o index.js já registra os comandos sozinho ao ligar.');
+    console.log('[DEPLOY] Rode "npm start" em vez disso.');
   } catch (err) {
-    console.error('[DEPLOY] Erro ao registrar comandos:', err);
+    console.error('[DEPLOY] Erro:', err);
     process.exit(1);
   }
 })();
