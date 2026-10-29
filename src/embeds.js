@@ -17,16 +17,19 @@ function getBannerAttachment() {
 function recruitmentAnnouncementEmbed() {
   const embed = new EmbedBuilder()
     .setColor(config.theme.color)
-    .setTitle(`🩸 RECRUTAMENTO — ${config.theme.name}`)
+    .setTitle(`📜 ࿔ Registro ${config.theme.name} 𝜗˚⋆`)
     .setDescription(
       `> *"Uma vez Helheim, sempre Helheim."*\n\n` +
-        `**Antes de vestir as cores da nossa gangue, prove que é digno de usá-las.**\n\n` +
-        `📋 **ETAPAS:**\n` +
-        `• **1.** Clique no botão abaixo para abrir sua sala privada de entrevista.\n` +
-        `• **2.** Responda ${questions.length} perguntas, uma por vez.\n` +
-        `• **3.** Seja sincero — a liderança vê além das palavras.\n` +
-        `• **4.** Ao concluir, o cargo de Recruta é liberado automaticamente.\n\n` +
-        `⚠️ Você tem ${timeLimitMin} minutos por pergunta. Ticket abandonado = reprovação automática.`
+        `୨୧ **Sejam bem-vindos à ${config.theme.name}!**\n` +
+        `Somos uma comunidade feita de gente, conversa, eventos e jogatina. ` +
+        `Faça seu registro para montar o seu perfil e entrar de vez.\n\n` +
+        `𖤐 **COMO FUNCIONA:**\n` +
+        `• **1.** Clique no botão abaixo para abrir sua sala privada.\n` +
+        `• **2.** Responda ${questions.length} perguntas rápidas, uma por vez.\n` +
+        `• **3.** Cada escolha te entrega o cargo correspondente **na hora**, no seu perfil.\n` +
+        `• **4.** Ao terminar, é só aproveitar a comunidade!\n\n` +
+        `⚠️ Você tem ${timeLimitMin} minutos por pergunta. Passou do tempo, a sala fecha e é só começar de novo.\n\n` +
+        `𓆩 ࣪ ִֶָ𓂃 Mais que uma comunidade, uma família. 𓂃 ࣪ ִֶָ𓆪`
     )
     .setFooter({ text: config.theme.footer })
     .setTimestamp();
@@ -43,15 +46,16 @@ function recruitmentAnnouncementEmbed() {
 function ticketWelcomeEmbed(member) {
   const embed = new EmbedBuilder()
     .setColor(config.theme.color)
-    .setTitle(`🩸 FORMULÁRIO DE RECRUTAMENTO — ${config.theme.name}`)
+    .setTitle(`📜 ࿔ Registro ${config.theme.name} 𝜗˚⋆`)
     .setDescription(
-      `Saudações, <@${member.id}>!\n\n` +
-        `> *"Honestidade é fundamental. Todas as respostas serão analisadas pela liderança."*\n\n` +
-        `Iremos fazer **${questions.length} perguntas**, uma por vez.\n` +
-        `Responda com calma e atenção. Você terá até **${timeLimitMin} minutos** para cada resposta.\n\n` +
+      `Seja bem-vindo(a), <@${member.id}>! 🩸\n\n` +
+        `> *"Mais que uma comunidade, uma família."*\n\n` +
+        `Vamos fazer **${questions.length} perguntas** rápidas, uma por vez. ` +
+        `Cada escolha te entrega o cargo correspondente logo em seguida, no seu perfil.\n` +
+        `Você terá até **${timeLimitMin} minutos** para cada resposta.\n\n` +
         `*A primeira pergunta começará em instantes...*`
     )
-    .setFooter({ text: `${config.theme.name} Recruitment • Hoje` })
+    .setFooter({ text: `${config.theme.name} • Registro` })
     .setTimestamp();
 
   if (getBannerAttachment()) {
@@ -75,7 +79,9 @@ function questionEmbed(question, index, total) {
       `**〔${question.number}〕** ${question.text}\n\n` +
         (question.type === 'choice'
           ? `Clique no botão correspondente abaixo · *Limite: ${timeLimitMin} min*`
-          : `Digite sua resposta abaixo · *Limite: ${timeLimitMin} min*`)
+          : question.type === 'multi'
+            ? `Selecione no menu abaixo (pode marcar mais de uma opção) · *Limite: ${timeLimitMin} min*`
+            : `Digite sua resposta abaixo · *Limite: ${timeLimitMin} min*`)
     )
     .addFields({
       name: '\u200b',
@@ -91,43 +97,72 @@ function timeoutEmbed() {
     .setColor(config.theme.failColor)
     .setTitle('⏱️ Tempo esgotado')
     .setDescription(
-      `Você não respondeu dentro do limite de ${timeLimitMin} minutos. Este ticket será encerrado por inatividade.\n\n` +
-        'Você pode iniciar um novo recrutamento quando quiser.'
+      `Você não respondeu dentro do limite de ${timeLimitMin} minutos. Esta sala será encerrada por inatividade.\n\n` +
+        'Você pode refazer o seu registro quando quiser.'
     );
 }
 
-function approvedEmbed(member) {
+function registrationCompleteEmbed(member) {
   return new EmbedBuilder()
     .setColor(config.theme.successColor)
-    .setTitle('✅ Recrutamento aprovado!')
+    .setTitle('✅ Registro concluído!')
     .setDescription(
-      `Parabéns, <@${member.id}>! Suas respostas foram registradas e você foi **aprovado(a)** automaticamente.\n\n` +
-        `Você já recebeu o cargo correspondente. Seja bem-vindo(a) à **${config.theme.name}**! 🩸\n\n` +
-        `Teremos que só te avaliar jogando agora, pra o veredito final da sua aprovação!\n` +
-        `Aguarde algum recrutador comparecer no horário marcado como disponível, e siga as instruções dele.`
+      `Tudo certo, <@${member.id}>! Suas escolhas foram registradas e os cargos já estão no seu perfil.\n\n` +
+        `Seja bem-vindo(a) à **${config.theme.name}** — mais que uma comunidade, uma família! 🩸\n\n` +
+        `*Esta sala vai se fechar sozinha em instantes.*`
     )
     .setFooter({ text: config.theme.footer })
     .setTimestamp();
 }
 
-function transcriptEmbed(application, member) {
-  const embed = new EmbedBuilder()
-    .setColor(config.theme.color)
-    .setTitle(`📄 Transcript de Recrutamento — ${member.user.tag}`)
-    .setThumbnail(member.displayAvatarURL())
-    .setFooter({ text: 'bot by johankkjk' })
-    .setTimestamp();
+/**
+ * Monta o transcript do recrutamento como uma LISTA de embeds.
+ * O Discord limita cada mensagem a 6000 caracteres somando todos os embeds (e 25 campos por embed),
+ * então com muitas perguntas/respostas longas o log precisa ser enviado em mais de uma mensagem
+ * (um embed por mensagem). Quem chama deve enviar cada embed separadamente.
+ */
+function transcriptEmbeds(application, member) {
+  const MAX_EMBED_CHARS = 5000; // margem de segurança sobre o limite de 6000
+  const MAX_FIELDS = 24;
+  const clip = (text, max) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
 
+  const fields = [];
   application.answers.forEach((a, i) => {
-    if (i === questions.length) {
-      embed.addFields({ name: '\u200b', value: '⫘'.repeat(30) });
-    }
-    embed.addFields({ name: `${i + 1}. ${a.question}`, value: a.answer || '—' });
+    fields.push({ name: clip(`${i + 1}. ${a.question}`, 256), value: clip(a.answer || '—', 1024) });
   });
+  fields.push({ name: '\u200b', value: `ID do usuário: \`${member.id}\`` });
 
-  embed.addFields({ name: '\u200b', value: `ID do usuário: \`${member.id}\`` });
+  const makeEmbed = (isFirst) => {
+    const embed = new EmbedBuilder().setColor(config.theme.color);
+    if (isFirst) {
+      embed
+        .setTitle(`📄 Registro — ${member.user.tag}`)
+        .setThumbnail(member.displayAvatarURL());
+    }
+    return embed;
+  };
 
-  return embed;
+  const result = [];
+  let current = makeEmbed(true);
+  let size = 120; // título + folga
+  let count = 0;
+
+  for (const field of fields) {
+    const fieldSize = field.name.length + field.value.length;
+    if (count >= MAX_FIELDS || size + fieldSize > MAX_EMBED_CHARS) {
+      result.push(current);
+      current = makeEmbed(false);
+      size = 0;
+      count = 0;
+    }
+    current.addFields(field);
+    size += fieldSize;
+    count += 1;
+  }
+  result.push(current);
+
+  result[result.length - 1].setFooter({ text: 'bot by johankkjk' }).setTimestamp();
+  return result;
 }
 
 function alreadyInProgressEmbed(channelId) {
@@ -141,8 +176,8 @@ module.exports = {
   ticketWelcomeEmbed,
   questionEmbed,
   timeoutEmbed,
-  approvedEmbed,
-  transcriptEmbed,
+  registrationCompleteEmbed,
+  transcriptEmbeds,
   alreadyInProgressEmbed,
   getBannerAttachment,
 };

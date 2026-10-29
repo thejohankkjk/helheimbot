@@ -6,24 +6,21 @@ const {
   ChannelType,
   PermissionFlagsBits,
   OverwriteType,
-  EmbedBuilder,
 } = require('discord.js');
 const config = require('./config');
 const questions = require('./questions');
 const db = require('./supabase');
 const embeds = require('./embeds');
-const { isModerator } = require('./arena/commands');
 
 const CHOICE_PREFIX = 'rec_choice';
-const TIME_PERIOD_SELECT_ID = 'rec_time_period_select';
-const FINISH_RECRUITMENT_BUTTON_ID = 'finish_recruitment';
+const MULTI_PREFIX = 'rec_multi';
 
-/** Cria o canal privado (ticket) para o recrutamento */
+/** Cria o canal privado (ticket) para o registro */
 async function createTicketChannel(guild, member) {
   const safeName = member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'user';
 
   const channel = await guild.channels.create({
-    name: `rec-${safeName}`,
+    name: `registro-${safeName}`,
     type: ChannelType.GuildText,
     parent: config.ticketCategoryId || null,
     permissionOverwrites: [
@@ -65,16 +62,31 @@ function buildChoiceRow(options) {
   return row;
 }
 
+function buildMultiRow(options) {
+  const row = new ActionRowBuilder().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId(MULTI_PREFIX)
+      .setPlaceholder('Selecione uma ou mais opções')
+      .setMinValues(1)
+      .setMaxValues(options.length)
+      .addOptions(options.map((opt, idx) => ({ label: opt, value: String(idx) })))
+  );
+  return row;
+}
+
 /**
- * Manda a pergunta `index` no canal e espera a resposta do usuário
- * (por texto ou clique em botão, o que vier primeiro).
- * Retorna { answer: string, timedOut: boolean }
+ * Manda a pergunta `index` no canal e espera a resposta do usuário.
+ * Retorna { answer: string, selectedOptions: string[]|null, timedOut: boolean }.
+ * selectedOptions só vem preenchido pra 'choice' (1 item) e 'multi' (1+ itens) — serve
+ * pra saber exatamente quais cargos entregar/remover.
  */
 function askAndWait(channel, userId, index) {
   return new Promise((resolve) => {
     const question = questions[index];
     const embed = embeds.questionEmbed(question, index, questions.length);
-    const components = question.type === 'choice' ? [buildChoiceRow(question.options)] : [];
+    let components = [];
+    if (question.type === 'choice') components = [buildChoiceRow(question.options)];
+    if (question.type === 'multi') components = [buildMultiRow(question.options)];
 
     channel.send({ embeds: [embed], components }).then((sentMessage) => {
       let settled = false;
@@ -86,7 +98,7 @@ function askAndWait(channel, userId, index) {
       });
 
       const componentCollector =
-        question.type === 'choice'
+        question.type === 'choice' || question.type === 'multi'
           ? sentMessage.createMessageComponentCollector({
               filter: (i) => i.user.id === userId,
               max: 1,
@@ -94,77 +106,60 @@ function askAndWait(channel, userId, index) {
             })
           : null;
 
-      const finish = (answer, timedOut) => {
+      const finish = (answer, selectedOptions, timedOut) => {
         if (settled) return;
         settled = true;
         messageCollector.stop('done');
         if (componentCollector) componentCollector.stop('done');
-        resolve({ answer, timedOut });
+        resolve({ answer, selectedOptions, timedOut });
       };
 
       messageCollector.on('collect', (m) => {
-        finish(m.content.trim(), false);
+        finish(m.content.trim(), null, false);
       });
 
       if (componentCollector) {
         componentCollector.on('collect', async (interaction) => {
-          const idx = Number(interaction.customId.split(':')[1]);
-          const chosen = question.options[idx];
-          await interaction.update({ components: [] });
-          await channel.send(`**${interaction.user.username}** respondeu: ${chosen}`);
-          finish(chosen, false);
+          if (question.type === 'choice') {
+            const idx = Number(interaction.customId.split(':')[1]);
+            const chosen = question.options[idx];
+            await interaction.update({ components: [] });
+            await channel.send(`**${interaction.user.username}** respondeu: ${chosen}`);
+            finish(chosen, [chosen], false);
+          } else {
+            const chosen = interaction.values.map((v) => question.options[Number(v)]);
+            await interaction.update({ components: [] });
+            await channel.send(`**${interaction.user.username}** respondeu: ${chosen.join(', ')}`);
+            finish(chosen.join(', '), chosen, false);
+          }
         });
       }
 
       messageCollector.on('end', (_collected, reason) => {
-        if (reason !== 'done') finish(null, true);
+        if (reason !== 'done') finish(null, null, true);
       });
     });
   });
 }
 
-/** Espera uma única mensagem de texto do usuário no canal (fora do sistema de perguntas numeradas) */
-function waitForTextMessage(channel, userId, timeoutMs) {
-  return new Promise((resolve) => {
-    const collector = channel.createMessageCollector({
-      filter: (m) => m.author.id === userId,
-      max: 1,
-      time: timeoutMs,
-    });
-    collector.on('collect', (m) => resolve({ answer: m.content.trim(), timedOut: false }));
-    collector.on('end', (collected) => {
-      if (collected.size === 0) resolve({ answer: null, timedOut: true });
-    });
-  });
-}
+/** Entrega o cargo da(s) opção(ões) escolhida(s) e remove o das não escolhidas da mesma pergunta */
+async function applyQuestionRoles(member, question, selectedOptions) {
+  if (!question.roles) return;
 
-/** Manda um menu de seleção e espera o usuário escolher uma opção */
-function waitForSelectChoice(channel, userId, embed, options, timeoutMs) {
-  return new Promise((resolve) => {
-    const row = new ActionRowBuilder().addComponents(
-      new StringSelectMenuBuilder()
-        .setCustomId(TIME_PERIOD_SELECT_ID)
-        .setPlaceholder('Selecione uma opção')
-        .addOptions(options)
-    );
+  for (const option of question.options) {
+    const roleId = question.roles[option];
+    if (!roleId) continue; // sem ID configurado pra essa opção — não mexe em nada
 
-    channel.send({ embeds: [embed], components: [row] }).then((sentMessage) => {
-      const collector = sentMessage.createMessageComponentCollector({
-        filter: (i) => i.user.id === userId,
-        max: 1,
-        time: timeoutMs,
-      });
-
-      collector.on('collect', async (i) => {
-        await i.update({ components: [] });
-        resolve({ value: i.values[0], label: options.find((o) => o.value === i.values[0])?.label, timedOut: false });
-      });
-
-      collector.on('end', (collected) => {
-        if (collected.size === 0) resolve({ value: null, label: null, timedOut: true });
-      });
-    });
-  });
+    try {
+      if (selectedOptions.includes(option)) {
+        await member.roles.add(roleId, `Registro: ${question.label || question.text} → ${option}`);
+      } else {
+        await member.roles.remove(roleId, `Registro: ${question.label || question.text} (troca de resposta)`);
+      }
+    } catch (err) {
+      console.error(`[REGISTRO] Falha ao ajustar cargo da opção "${option}":`, err);
+    }
+  }
 }
 
 /** Roda o formulário completo dentro do canal do ticket */
@@ -172,7 +167,8 @@ async function runRecruitmentFlow(channel, member, application) {
   const answers = application.answers ? [...application.answers] : [];
 
   for (let i = application.current_question; i < questions.length; i++) {
-    const { answer, timedOut } = await askAndWait(channel, member.id, i);
+    const question = questions[i];
+    const { answer, selectedOptions, timedOut } = await askAndWait(channel, member.id, i);
 
     if (timedOut) {
       await channel.send({ embeds: [embeds.timeoutEmbed()] });
@@ -181,159 +177,70 @@ async function runRecruitmentFlow(channel, member, application) {
       return;
     }
 
-    answers.push({ question: questions[i].text, answer });
+    if (question.roles && selectedOptions) {
+      await applyQuestionRoles(member, question, selectedOptions);
+    }
+
+    answers.push({ question: question.label || question.text, answer });
     application = await db.saveAnswer(application.id, answers, i + 1);
   }
 
-  application = await runSecondPhase(channel, member, application, answers);
-  if (!application) return; // expirou na segunda fase, já tratado dentro da função
-
-  await finalizeApproval(channel, member, application);
+  await finalizeRegistration(channel, member, application);
 }
 
-/** Segunda fase: disponibilidade pra avaliação prática (período + horário exato) */
-async function runSecondPhase(channel, member, application, answers) {
-  await channel.send({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(config.theme.color)
-        .setDescription(
-          `✅ **Primeira parte do recrutamento finalizada!**\n\n` +
-            `Agora precisamos te avaliar jogando. Vamos marcar um horário para isso.`
-        ),
-    ],
-  });
-
-  const timeoutMs = config.theme.questionTimeLimitMs;
-
-  // Pergunta 1 da 2ª fase: período (tarde/noite)
-  const periodResult = await waitForSelectChoice(
-    channel,
-    member.id,
-    new EmbedBuilder()
-      .setColor(config.theme.color)
-      .setAuthor({ name: '🕒 SEGUNDA FASE  •  Disponibilidade' })
-      .setDescription(`**Em qual período você está disponível para a avaliação prática?**`),
-    [
-      { label: 'De tarde', value: 'tarde', emoji: '🌤️' },
-      { label: 'De noite', value: 'noite', emoji: '🌙' },
-    ],
-    timeoutMs
-  );
-
-  if (periodResult.timedOut) {
-    await channel.send({ embeds: [embeds.timeoutEmbed()] });
-    await db.finishApplication(application.id, 'expirado', 'sistema');
-    setTimeout(() => channel.delete().catch(() => {}), 10_000);
-    return null;
-  }
-
-  answers.push({ question: 'Período disponível para a avaliação prática', answer: periodResult.label });
-  application = await db.saveAnswer(application.id, answers, application.current_question);
-
-  // Pergunta 2 da 2ª fase: horário exato dentro do período escolhido
-  const horarioEmbed = new EmbedBuilder()
-    .setColor(config.theme.color)
-    .setAuthor({ name: '🕒 SEGUNDA FASE  •  Disponibilidade' })
-    .setDescription(
-      `**Que horário, dentro do período de ${periodResult.label.toLowerCase()}, você estaria disponível?**\n` +
-        `Digite sua resposta (ex: 19:00). Limite: ${Math.round(timeoutMs / 60000)} min`
-    );
-  await channel.send({ embeds: [horarioEmbed] });
-
-  const horarioResult = await waitForTextMessage(channel, member.id, timeoutMs);
-
-  if (horarioResult.timedOut) {
-    await channel.send({ embeds: [embeds.timeoutEmbed()] });
-    await db.finishApplication(application.id, 'expirado', 'sistema');
-    setTimeout(() => channel.delete().catch(() => {}), 10_000);
-    return null;
-  }
-
-  answers.push({ question: `Horário específico (${periodResult.label})`, answer: horarioResult.answer });
-  application = await db.saveAnswer(application.id, answers, application.current_question);
-
-  return application;
-}
-
-async function finalizeApproval(channel, member, application) {
-  try {
-    await member.roles.add(config.approvedRoleId, 'Recrutamento aprovado automaticamente');
-  } catch (err) {
-    console.error('[RECRUTAMENTO] Falha ao atribuir cargo:', err);
-    await channel.send(
-      '⚠️ Não consegui atribuir o cargo automaticamente (verifique minhas permissões e a posição do cargo). A staff foi notificada.'
-    );
+async function finalizeRegistration(channel, member, application) {
+  if (config.approvedRoleId) {
+    try {
+      await member.roles.add(config.approvedRoleId, 'Registro concluído automaticamente');
+    } catch (err) {
+      console.error('[REGISTRO] Falha ao atribuir cargo geral:', err);
+      await channel.send(
+        '⚠️ Não consegui atribuir o cargo geral automaticamente (verifique minhas permissões e a posição do cargo). A staff foi notificada.'
+      );
+    }
   }
 
   const finished = await db.finishApplication(application.id, 'aprovado', 'auto');
 
-  // Renomeia o canal só pra indicar que a parte escrita terminou — o ticket continua
-  // ABERTO até um staff clicar em "Finalizar Recrutamento" depois da avaliação prática.
-  const safeName = member.user.username.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'user';
-  await channel.setName(`avaliar-${safeName}`).catch(() => {});
-
-  const finishRow = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`${FINISH_RECRUITMENT_BUTTON_ID}:${member.id}`)
-      .setLabel('Finalizar Recrutamento')
-      .setStyle(ButtonStyle.Success)
-      .setEmoji('✅')
-  );
-
-  await channel.send({ embeds: [embeds.approvedEmbed(member)], components: [finishRow] });
-  await channel.send({
-    content: '👮 **Staff:** depois de avaliar essa pessoa jogando, clique no botão acima pra finalizar e fechar esse ticket.',
-  });
-
-  if (config.logChannelId) {
-    const logChannel = await channel.guild.channels.fetch(config.logChannelId).catch(() => null);
-    if (logChannel) {
-      await logChannel
-        .send({
-          content:
-            `<@${member.id}> foi aprovado(a) no recrutamento.\n` +
-            `📎 Ticket: <#${channel.id}>\n` +
-            `👮 <@&${config.recruitmentLogPingRoleId}>`,
-          embeds: [embeds.transcriptEmbed(finished, member)],
-        })
-        .catch(() => {});
-    }
-  }
-}
-
-/** Botão "Finalizar Recrutamento" — só staff pode usar, fecha o ticket depois da avaliação prática */
-async function handleFinishRecruitmentButton(interaction) {
-  const [, candidateId] = interaction.customId.split(':');
-
-  if (!isModerator(interaction.member)) {
-    await interaction.reply({ content: '⛔ Só a staff pode finalizar esse recrutamento.', ephemeral: true });
-    return;
-  }
-
-  await interaction.reply(
-    `✅ Recrutamento de <@${candidateId}> finalizado por <@${interaction.user.id}>. Esse ticket vai se fechar em instantes.`
-  );
-
-  const channel = interaction.channel;
+  await channel.send({ embeds: [embeds.registrationCompleteEmbed(member)] });
 
   // Trava o envio de mensagens imediatamente
-  await channel.permissionOverwrites.edit(candidateId, { SendMessages: false }).catch(() => {});
+  await channel.permissionOverwrites.edit(member.id, { SendMessages: false }).catch(() => {});
 
-  // Após 20 segundos, some com a visibilidade do canal pro candidato (staff continua vendo)
+  // Após 20 segundos, some com a visibilidade do canal pro usuário (staff continua vendo)
   setTimeout(() => {
-    channel.permissionOverwrites.edit(candidateId, { ViewChannel: false, SendMessages: false }).catch(() => {});
+    channel.permissionOverwrites.edit(member.id, { ViewChannel: false, SendMessages: false }).catch(() => {});
   }, 20_000);
 
   // Após 5 minutos, apaga o canal por completo
   setTimeout(() => {
-    channel.delete('Recrutamento finalizado pela staff').catch(() => {});
+    channel.delete('Registro finalizado').catch(() => {});
   }, 5 * 60 * 1000);
+
+  if (config.logChannelId) {
+    const logChannel = await channel.guild.channels.fetch(config.logChannelId).catch(() => null);
+    if (logChannel) {
+      const transcript = embeds.transcriptEmbeds(finished, member);
+      const logError = (err) => console.error('[REGISTRO] Falha ao enviar o log:', err);
+
+      await logChannel
+        .send({
+          content:
+            `<@${member.id}> concluiu o registro.\n` +
+            `📎 Ticket: <#${channel.id}>\n` +
+            `👮 <@&${config.recruitmentLogPingRoleId}>`,
+          embeds: [transcript[0]],
+        })
+        .catch(logError);
+
+      for (const extra of transcript.slice(1)) {
+        await logChannel.send({ embeds: [extra] }).catch(logError);
+      }
+    }
+  }
 }
 
 module.exports = {
   createTicketChannel,
   runRecruitmentFlow,
-  handleFinishRecruitmentButton,
-  FINISH_RECRUITMENT_BUTTON_ID,
 };

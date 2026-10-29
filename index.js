@@ -14,13 +14,14 @@ const {
 const config = require('./src/config');
 const db = require('./src/supabase');
 const embeds = require('./src/embeds');
-const { createTicketChannel, runRecruitmentFlow, handleFinishRecruitmentButton, FINISH_RECRUITMENT_BUTTON_ID } = require('./src/recruitment');
+const { createTicketChannel, runRecruitmentFlow } = require('./src/recruitment');
 const arena = require('./src/arena/commands');
 const arenaAdmin = require('./src/arena/admin');
 const moderation = require('./src/moderation');
 const voice = require('./src/voice');
 const resetall = require('./src/resetall');
 const banCmd = require('./src/ban');
+const castigo = require('./src/castigo');
 const criar = require('./src/criar');
 const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
@@ -89,6 +90,7 @@ client.once('clientReady', async () => {
       editar.editarCommand,
       adicionar.adicionarCommand,
       banCmd.banCommand,
+      castigo.castigoCommand,
       automodCommands.modconfigCommand,
       automodCommands.automodCommand,
       automodCommands.modpermCommand,
@@ -133,7 +135,7 @@ client.on('interactionCreate', async (interaction) => {
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(START_BUTTON_ID)
-          .setLabel('Iniciar Recrutamento')
+          .setLabel('Quero me juntar à comunidade')
           .setStyle(ButtonStyle.Danger)
           .setEmoji('⚔️')
       );
@@ -203,6 +205,12 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    // ===== Slash command: /castigo =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'castigo') {
+      await castigo.handleCastigoCommand(interaction);
+      return;
+    }
+
     // ===== Slash commands: /modconfig, /automod, /modperm =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'modconfig') {
       await automodCommands.handleModconfigCommand(interaction);
@@ -214,12 +222,6 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (interaction.isChatInputCommand() && interaction.commandName === 'modperm') {
       await automodCommands.handleModpermCommand(interaction);
-      return;
-    }
-
-    // ===== Botão: Finalizar Recrutamento (staff) =====
-    if (interaction.isButton() && interaction.customId.startsWith(`${FINISH_RECRUITMENT_BUTTON_ID}:`)) {
-      await handleFinishRecruitmentButton(interaction);
       return;
     }
 

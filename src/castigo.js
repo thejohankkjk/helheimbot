@@ -1,136 +1,144 @@
-// castigo.js  -  comando /castigo  (timeout do Discord)  -  discord.js v14
-//
-// Uso:  /castigo usuario:@fulano tempo:"3d e 2h" motivo:"spam"
-// Coloque este arquivo na pasta de comandos e o parseTempo.js ao lado dele
-// (ajuste o require abaixo se você usar outra pasta).
+const { SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require('discord.js');
+const config = require('./config');
+const { isModerator } = require('./arena/commands');
 
-const {
-  SlashCommandBuilder,
-  PermissionFlagsBits,
-  EmbedBuilder,
-  MessageFlags,
-} = require('discord.js');
-const { interpretarTempo, formatarDuracao } = require('./parseTempo');
+const MAX_TIMEOUT_MS = 28 * 24 * 60 * 60 * 1000; // limite máximo do Discord (28 dias)
 
-const cortar = (txt, max = 1000) => (txt.length > max ? txt.slice(0, max - 1) + '…' : txt);
+const castigoCommand = new SlashCommandBuilder()
+  .setName('castigo')
+  .setDescription('Aplica timeout (silenciar) em alguém, avisando o motivo por DM antes')
+  .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+  .addUserOption((opt) => opt.setName('usuario').setDescription('Quem castigar').setRequired(true))
+  .addStringOption((opt) =>
+    opt
+      .setName('tempo')
+      .setDescription('Ex: 3d, 5h, 30min, 3d e 2h, 4 horas e 30 min')
+      .setRequired(true)
+  )
+  .addStringOption((opt) => opt.setName('motivo').setDescription('Motivo do castigo').setRequired(true))
+  .toJSON();
 
-module.exports = {
-  data: new SlashCommandBuilder()
-    .setName('castigo')
-    .setDescription('Coloca um membro de castigo (timeout)')
-    .addUserOption((o) =>
-      o.setName('usuario').setDescription('Quem vai de castigo').setRequired(true)
+/**
+ * Interpreta textos como "3d", "5h", "30 min", "3d e 2h", "4 horas e 30 min" e devolve
+ * milissegundos (ou null se não achar nenhum número com unidade).
+ */
+function parseDuration(input) {
+  const regex = /(\d+)\s*(dias?|horas?|minutos?|min|d|h|m)\b/gi;
+  const text = input.toLowerCase();
+  let match;
+  let totalMs = 0;
+  let found = false;
+
+  while ((match = regex.exec(text)) !== null) {
+    found = true;
+    const value = parseInt(match[1], 10);
+    const unit = match[2];
+
+    if (unit.startsWith('d')) totalMs += value * 24 * 60 * 60 * 1000;
+    else if (unit.startsWith('h')) totalMs += value * 60 * 60 * 1000;
+    else totalMs += value * 60 * 1000; // min / minuto(s) / m
+  }
+
+  return found ? totalMs : null;
+}
+
+function formatDuration(ms) {
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+
+  const parts = [];
+  if (days) parts.push(`${days}d`);
+  if (hours) parts.push(`${hours}h`);
+  if (minutes) parts.push(`${minutes}min`);
+  return parts.length ? parts.join(' ') : '0min';
+}
+
+function castigoAlertEmbed(guild, motivo, durationMs, moderatorTag) {
+  const endsUnix = Math.floor((Date.now() + durationMs) / 1000);
+  return new EmbedBuilder()
+    .setColor(0xe67e22)
+    .setTitle('🚨 Alerta!!')
+    .setThumbnail(guild.iconURL() || null)
+    .setDescription(
+      `Você recebeu um **castigo (timeout)** no servidor **${guild.name}**.\n\n` +
+        `📋 **Motivo:** ${motivo}\n` +
+        `⏳ **Duração:** ${formatDuration(durationMs)}\n` +
+        `📅 **Termina:** <t:${endsUnix}:F> (<t:${endsUnix}:R>)\n` +
+        `👮 **Responsável:** ${moderatorTag}\n\n` +
+        `Enquanto durar, você não poderá enviar mensagens, falar em call nem reagir. ` +
+        `Se acredita que isso foi um engano, entre em contato com a liderança da comunidade.`
     )
-    .addStringOption((o) =>
-      o
-        .setName('tempo')
-        .setDescription('Ex.: 30 min, 5h, 3d e 2h, 4 horas e 30 min')
-        .setRequired(true)
-    )
-    .addStringOption((o) =>
-      o.setName('motivo').setDescription('Motivo do castigo').setMaxLength(500).setRequired(false)
-    )
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .setDMPermission(false),
+    .setFooter({ text: `${config.theme.footer} • bot by johankkjk` })
+    .setTimestamp();
+}
 
-  async execute(interaction) {
-    const { guild, client } = interaction;
-    const alvoUser = interaction.options.getUser('usuario', true);
-    const textoTempo = interaction.options.getString('tempo', true);
-    const motivo = interaction.options.getString('motivo') || 'Não informado';
+async function handleCastigoCommand(interaction) {
+  if (!isModerator(interaction.member) && !interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+    await interaction.reply({ content: '⛔ Você não tem permissão para usar esse comando.', ephemeral: true });
+    return;
+  }
 
-    // ephemeral = só o moderador vê
-    const erro = (msg) =>
-      interaction.reply({ content: `❌ ${msg}`, flags: MessageFlags.Ephemeral });
+  const guild = interaction.guild;
+  const me = guild.members.me;
+  if (!me.permissions.has(PermissionFlagsBits.ModerateMembers)) {
+    await interaction.reply({ content: '⛔ Eu não tenho permissão de Silenciar Membros (timeout) nesse servidor.', ephemeral: true });
+    return;
+  }
 
-    // ---------- validações ----------
-    if (alvoUser.id === interaction.user.id) return erro('Você não pode se colocar de castigo.');
-    if (alvoUser.id === client.user.id) return erro('Eu não posso me colocar de castigo.');
+  const targetUser = interaction.options.getUser('usuario');
+  const tempoTexto = interaction.options.getString('tempo');
+  const motivo = interaction.options.getString('motivo');
 
-    const membro = await guild.members.fetch(alvoUser.id).catch(() => null);
-    if (!membro) return erro('Esse usuário não está no servidor.');
+  const durationMs = parseDuration(tempoTexto);
+  if (!durationMs || durationMs <= 0) {
+    await interaction.reply({
+      content: '⚠️ Não consegui entender esse tempo. Exemplos válidos: `3d`, `5h`, `30min`, `3d e 2h`, `4 horas e 30 min`.',
+      ephemeral: true,
+    });
+    return;
+  }
 
-    const moderador = interaction.member;
-    const ehDono = guild.ownerId === moderador.id;
-    if (!ehDono && membro.roles.highest.position >= moderador.roles.highest.position) {
-      return erro('Você não pode castigar alguém com cargo igual ou maior que o seu.');
-    }
-    if (!membro.moderatable) {
-      return erro(
-        'Não consigo castigar essa pessoa (ela é administradora/dona, ou o cargo dela está acima do meu, ou me falta a permissão **Castigar membros**).'
-      );
-    }
+  const clampedMs = Math.min(durationMs, MAX_TIMEOUT_MS);
+  const wasClamped = clampedMs < durationMs;
 
-    // ---------- interpretar o tempo ----------
-    const tempo = interpretarTempo(textoTempo);
-    if (tempo.erro) return erro(tempo.erro);
+  const targetMember = await guild.members.fetch(targetUser.id).catch(() => null);
+  if (!targetMember) {
+    await interaction.reply({ content: '⛔ Essa pessoa não está nesse servidor.', ephemeral: true });
+    return;
+  }
+  if (!targetMember.moderatable) {
+    await interaction.reply({
+      content: '⛔ Não consigo castigar essa pessoa (cargo dela é igual ou maior que o meu, ou é o dono do servidor).',
+      ephemeral: true,
+    });
+    return;
+  }
 
-    const duracaoTexto = formatarDuracao(tempo.ms);
-    const fim = Math.floor((Date.now() + tempo.ms) / 1000); // timestamp unix (segundos)
-    const jaEstavaDeCastigo = membro.isCommunicationDisabled();
+  await interaction.deferReply({ ephemeral: true });
 
-    await interaction.deferReply(); // resposta pública
+  // Avisa por DM antes de aplicar (mesmo padrão do /ban); DM fechada não impede o castigo
+  let dmSent = true;
+  try {
+    await targetUser.send({ embeds: [castigoAlertEmbed(guild, motivo, clampedMs, interaction.user.tag)] });
+  } catch {
+    dmSent = false;
+  }
 
-    // ---------- aplicar o castigo ----------
-    try {
-      await membro.timeout(
-        tempo.ms,
-        cortar(`${motivo} | Por ${interaction.user.tag}`, 500)
-      );
-    } catch (e) {
-      console.error('[castigo] falha ao aplicar timeout:', e);
-      return interaction.editReply('❌ Não consegui aplicar o castigo. Verifique minhas permissões e a hierarquia de cargos.');
-    }
+  try {
+    await targetMember.timeout(clampedMs, motivo);
+  } catch (err) {
+    console.error('[CASTIGO] Erro ao aplicar timeout:', err);
+    await interaction.editReply('❌ Não consegui aplicar o castigo. Veja os logs.');
+    return;
+  }
 
-    // ---------- DM para o castigado ----------
-    let dmEnviada = true;
-    try {
-      const dmEmbed = new EmbedBuilder()
-        .setColor(0xe67e22)
-        .setTitle('⏳ Você foi colocado de castigo')
-        .setDescription(`Você recebeu um castigo no servidor **${guild.name}**.`)
-        .addFields(
-          { name: '⏱️ Duração', value: duracaoTexto, inline: true },
-          { name: '🔓 Termina', value: `<t:${fim}:F>\n(<t:${fim}:R>)`, inline: true },
-          { name: '📄 Motivo', value: cortar(motivo) },
-          { name: '👮 Moderador', value: interaction.user.tag }
-        )
-        .setThumbnail(guild.iconURL())
-        .setFooter({ text: guild.name })
-        .setTimestamp();
-      await alvoUser.send({ embeds: [dmEmbed] });
-    } catch {
-      dmEnviada = false; // DM fechada ou bloqueada
-    }
+  await interaction.editReply(
+    `✅ <@${targetUser.id}> foi castigado(a) por **${formatDuration(clampedMs)}**.\n` +
+      `📋 Motivo: ${motivo}\n` +
+      `📩 DM enviada: ${dmSent ? 'sim' : 'não (DM fechada)'}` +
+      (wasClamped ? `\n⚠️ O tempo pedido passava do limite do Discord (28 dias), ajustei pro máximo.` : '')
+  );
+}
 
-    // ---------- resposta no canal ----------
-    const embed = new EmbedBuilder()
-      .setColor(0x2ecc71)
-      .setTitle('✅ Membro colocado de castigo')
-      .setThumbnail(alvoUser.displayAvatarURL())
-      .addFields(
-        { name: '👤 Membro', value: `${alvoUser} (${alvoUser.tag})`, inline: true },
-        { name: '👮 Moderador', value: `${interaction.user}`, inline: true },
-        { name: '⏱️ Duração', value: duracaoTexto, inline: true },
-        { name: '🔓 Termina', value: `<t:${fim}:F> (<t:${fim}:R>)` },
-        { name: '📄 Motivo', value: cortar(motivo) },
-        {
-          name: '📩 Aviso por DM',
-          value: dmEnviada ? 'Enviado ✅' : 'Não consegui enviar (DM fechada) ❌',
-        }
-      )
-      .setTimestamp();
-    if (jaEstavaDeCastigo) embed.setFooter({ text: 'O castigo anterior foi substituído por este.' });
-
-    await interaction.editReply({ embeds: [embed] });
-
-    // ---------- log opcional (defina LOG_CHANNEL_ID no .env) ----------
-    const logId = process.env.LOG_CHANNEL_ID;
-    if (logId) {
-      const canal = await guild.channels.fetch(logId).catch(() => null);
-      if (canal?.isTextBased()) {
-        canal.send({ embeds: [EmbedBuilder.from(embed).setTitle('📋 Castigo aplicado')] }).catch(() => {});
-      }
-    }
-  },
-};
+module.exports = { castigoCommand, handleCastigoCommand, parseDuration, formatDuration };
