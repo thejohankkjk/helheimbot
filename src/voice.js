@@ -64,7 +64,7 @@ async function handleCallCommand(interaction) {
         selfMute: true, // entra mutado; o "áudio" tocado é só silêncio pra manter a conexão viva
       });
 
-      await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+      await entersState(connection, VoiceConnectionStatus.Ready, 25_000);
       const player = keepConnectionAlive(connection);
 
       voiceSessions.set(interaction.guildId, {
