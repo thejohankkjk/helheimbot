@@ -22,6 +22,7 @@ const voice = require('./src/voice');
 const resetall = require('./src/resetall');
 const banCmd = require('./src/ban');
 const castigo = require('./src/castigo');
+const confess = require('./src/confess');
 const criar = require('./src/criar');
 const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
@@ -91,6 +92,8 @@ client.once('clientReady', async () => {
       adicionar.adicionarCommand,
       banCmd.banCommand,
       castigo.castigoCommand,
+      confess.confessPanelCommand,
+      confess.confessAutorCommand,
       automodCommands.modconfigCommand,
       automodCommands.automodCommand,
       automodCommands.modpermCommand,
@@ -208,6 +211,24 @@ client.on('interactionCreate', async (interaction) => {
     // ===== Slash command: /castigo =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'castigo') {
       await castigo.handleCastigoCommand(interaction);
+      return;
+    }
+
+    // ===== Helheim-Tell (mensagens anônimas) =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'confess-painel') {
+      await confess.handleConfessPanelCommand(interaction);
+      return;
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === 'confess-autor') {
+      await confess.handleConfessAutorCommand(interaction);
+      return;
+    }
+    if (interaction.isButton() && interaction.customId === confess.START_BUTTON_ID) {
+      await confess.handleConfessButton(interaction);
+      return;
+    }
+    if (interaction.isModalSubmit() && interaction.customId === confess.MODAL_ID) {
+      await confess.handleConfessModalSubmit(interaction);
       return;
     }
 

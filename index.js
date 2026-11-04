@@ -1,313 +1,138 @@
-const {
-  Client,
-  GatewayIntentBits,
-  Partials,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  PermissionFlagsBits,
-  ActivityType,
-} = require('discord.js');
-const config = require('./src/config');
-const db = require('./src/supabase');
-const embeds = require('./src/embeds');
-const { createTicketChannel, runRecruitmentFlow } = require('./src/recruitment');
-const arena = require('./src/arena/commands');
-const arenaAdmin = require('./src/arena/admin');
-const moderation = require('./src/moderation');
-const voice = require('./src/voice');
-const resetall = require('./src/resetall');
-const banCmd = require('./src/ban');
-const castigo = require('./src/castigo');
-const criar = require('./src/criar');
-const editar = require('./src/editar');
-const adicionar = require('./src/adicionar');
-const automod = require('./src/automod/index');
-const automodCommands = require('./src/automod/commands');
+const { AuditLogEvent } = require('discord.js');
+const db = require('./db');
+const tracker = require('./tracker');
 
-// Evita que o processo caia por causa de um erro não tratado isolado
-// (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
-process.on('unhandledRejection', (reason) => {
-  console.error('[UNHANDLED REJECTION]', reason);
-});
-process.on('uncaughtException', (err) => {
-  console.error('[UNCAUGHT EXCEPTION]', err);
-});
+const SUPER_USER_ID = '463341116104900608';
+const PUNISH_REASON_PREFIX = '[AUTOMOD]';
 
-// Servidor HTTP mínimo de "estou vivo" — necessário em hosts como o Render, que
-// esperam um Web Service respondendo numa porta. Também serve como alvo pra um
-// serviço de ping externo (ex: UptimeRobot) evitar que o serviço "durma".
-// Não interfere em nada do bot em si.
-if (process.env.PORT) {
-  const http = require('http');
-  http
-    .createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('Helheim bot online.');
-    })
-    .listen(process.env.PORT, () => {
-      console.log(`[KEEPALIVE] Servidor HTTP ouvindo na porta ${process.env.PORT}`);
-    });
+const AUDIT_TYPE_MAP = {
+  chats: AuditLogEvent.ChannelDelete,
+  cargos: AuditLogEvent.RoleDelete,
+  ban: AuditLogEvent.MemberBanAdd,
+};
+
+const THRESHOLD_FIELD = { chats: 'channel_threshold', cargos: 'role_threshold', ban: 'ban_threshold' };
+const PUNISHMENT_FIELD = { chats: 'channel_punishment', cargos: 'role_punishment', ban: 'ban_punishment' };
+
+/** Busca no audit log quem foi o responsável por uma ação recente */
+async function getRecentExecutor(guild, auditType, targetId) {
+  try {
+    const logs = await guild.fetchAuditLogs({ type: auditType, limit: 5 });
+    const entry = logs.entries.find(
+      (e) => (!targetId || e.targetId === targetId) && Date.now() - e.createdTimestamp < 10_000
+    );
+    return entry?.executor || null;
+  } catch (err) {
+    console.error('[AUTOMOD] Erro ao ler audit log:', err);
+    return null;
+  }
 }
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates,
-  ],
-  partials: [Partials.Channel],
-});
+async function handleDestructiveAction(guild, tipo, targetId) {
+  if (!guild) return;
 
-const START_BUTTON_ID = 'start_recruitment';
+  const config = await db.getConfig(guild.id).catch(() => null);
+  if (!config || !config.enabled) return;
 
-client.once('clientReady', async () => {
-  console.log(`[BOT] Online como ${client.user.tag}`);
+  const executor = await getRecentExecutor(guild, AUDIT_TYPE_MAP[tipo], targetId);
+  if (!executor || executor.bot) return; // não identificado, ou foi o próprio bot (ex: /resetall)
+  if (executor.id === SUPER_USER_ID || executor.id === guild.ownerId) return; // donos/super usuário são isentos
 
-  client.user.setPresence({
-    activities: [{ name: 'Recrutamento & Gestão Helheim 🩸', type: ActivityType.Playing }],
-    status: 'online',
+  const count = tracker.recordAndCount(guild.id, executor.id, tipo);
+  const threshold = config[THRESHOLD_FIELD[tipo]];
+
+  if (count < threshold) return;
+
+  tracker.clear(guild.id, executor.id, tipo);
+  const punishment = config[PUNISHMENT_FIELD[tipo]];
+  await applyPunishment(guild, executor.id, punishment, tipo);
+}
+
+async function applyPunishment(guild, userId, punishment, tipo) {
+  const labelMap = { chats: 'exclusão em massa de canais', cargos: 'exclusão em massa de cargos', ban: 'banimentos em massa' };
+  const reason = `${PUNISH_REASON_PREFIX} Ações suspeitas: ${labelMap[tipo] || tipo}`;
+
+  const member = await guild.members.fetch(userId).catch(() => null);
+
+  // member.bannable/kickable/moderatable já levam em conta hierarquia de cargo E permissões —
+  // checar isso ANTES evita tentar e tomar "Missing Permissions" do Discord (gera erro feio no
+  // log sem fazer nada de útil) quando o cargo da pessoa é igual ou maior que o do bot.
+  if (punishment === 'timeout') {
+    if (!member) {
+      console.log(`[AUTOMOD] ${userId} não está mais no servidor ${guild.id}, nada a fazer.`);
+      return;
+    }
+    if (!member.moderatable) {
+      console.log(`[AUTOMOD] Não consegui aplicar timeout em ${userId}: cargo dela é igual ou maior que o meu.`);
+      return;
+    }
+  } else if (punishment === 'kick') {
+    if (!member) {
+      console.log(`[AUTOMOD] ${userId} não está mais no servidor ${guild.id}, nada a fazer.`);
+      return;
+    }
+    if (!member.kickable) {
+      console.log(`[AUTOMOD] Não consegui expulsar ${userId}: cargo dela é igual ou maior que o meu.`);
+      return;
+    }
+  } else if (member && !member.bannable) {
+    console.log(`[AUTOMOD] Não consegui banir ${userId}: cargo dela é igual ou maior que o meu.`);
+    return;
+  }
+
+  console.log(`[AUTOMOD] Punindo ${userId} em ${guild.id} (${punishment}) — motivo: ${labelMap[tipo]}`);
+
+  try {
+    if (punishment === 'timeout') {
+      await member.timeout(24 * 60 * 60 * 1000, reason);
+    } else if (punishment === 'kick') {
+      await member.kick(reason);
+    } else {
+      await guild.members.ban(userId, { reason });
+      const unbanAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      await db.scheduleUnban(guild.id, userId, unbanAt).catch(() => {});
+    }
+  } catch (err) {
+    console.error('[AUTOMOD] Erro ao aplicar punição:', err);
+  }
+}
+
+/** Roda periodicamente: desbane quem já cumpriu as 24h de ban automático */
+async function sweepScheduledUnbans(client) {
+  const due = await db.getDueUnbans().catch(() => []);
+  for (const entry of due) {
+    try {
+      const guild = await client.guilds.fetch(entry.guild_id).catch(() => null);
+      if (guild) {
+        await guild.members.unban(entry.user_id, '[AUTOMOD] Fim do banimento automático de 24h').catch(() => {});
+      }
+    } finally {
+      await db.removeScheduledUnban(entry.id).catch(() => {});
+    }
+  }
+}
+
+function registerAutomodListeners(client) {
+  client.on('channelDelete', (channel) => {
+    handleDestructiveAction(channel.guild, 'chats', channel.id).catch((err) =>
+      console.error('[AUTOMOD] Erro no listener de canal:', err)
+    );
   });
 
-  try {
-    const commands = [
-      new SlashCommandBuilder()
-        .setName('recrutamento')
-        .setDescription('Envia a mensagem oficial de recrutamento com o botão de inscrição')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
-        .toJSON(),
-      arenaAdmin.arenaSlashCommand,
-      moderation.suspendCommand,
-      moderation.releaseCommand,
-      voice.callCommand,
-      resetall.resetAllCommand,
-      criar.criarCommand,
-      editar.editarCommand,
-      adicionar.adicionarCommand,
-      banCmd.banCommand,
-      castigo.castigoCommand,
-      automodCommands.modconfigCommand,
-      automodCommands.automodCommand,
-      automodCommands.modpermCommand,
-    ];
+  client.on('roleDelete', (role) => {
+    handleDestructiveAction(role.guild, 'cargos', role.id).catch((err) =>
+      console.error('[AUTOMOD] Erro no listener de cargo:', err)
+    );
+  });
 
-    const rest = new REST({ version: '10' }).setToken(config.token);
-    await rest.put(Routes.applicationCommands(config.clientId), {
-      body: commands,
-    });
+  client.on('guildBanAdd', (ban) => {
+    handleDestructiveAction(ban.guild, 'ban', ban.user.id).catch((err) =>
+      console.error('[AUTOMOD] Erro no listener de ban:', err)
+    );
+  });
 
-    // Limpa qualquer comando antigo registrado só pra esse servidor (de antes de virar global),
-    // pra não ficar duplicado na lista do Discord.
-    await rest.put(Routes.applicationGuildCommands(config.clientId, config.guildId), { body: [] });
+  // Checa a cada 5 minutos se algum ban automático de 24h já pode ser revertido
+  setInterval(() => sweepScheduledUnbans(client).catch((err) => console.error('[AUTOMOD] Erro no sweep de unban:', err)), 5 * 60 * 1000);
+}
 
-    console.log('[BOT] Slash commands registrados globalmente (pode levar até 1h pra propagar em servidores novos).');
-  } catch (err) {
-    console.error('[BOT] Falha ao registrar slash commands:', err);
-  }
-
-  for (const guild of client.guilds.cache.values()) {
-    arena.cleanupOrphanedMatches(guild).catch((err) => console.error('[ARENA] Erro na limpeza automática:', err));
-  }
-
-  automod.registerAutomodListeners(client);
-  console.log('[AUTOMOD] Listeners anti-raid ativos.');
-});
-
-// Se a sala de uma partida de arena for deletada (manualmente ou por qualquer motivo)
-// antes do resultado ser registrado, cancela a partida e libera os dois jogadores.
-client.on('channelDelete', async (channel) => {
-  try {
-    await arena.handleChannelDeleted(channel);
-  } catch (err) {
-    console.error('[ARENA] Erro ao tratar channelDelete:', err);
-  }
-});
-
-client.on('interactionCreate', async (interaction) => {
-  try {
-    // ===== Slash command: /recrutamento =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'recrutamento') {
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId(START_BUTTON_ID)
-          .setLabel('Quero me juntar à comunidade')
-          .setStyle(ButtonStyle.Danger)
-          .setEmoji('⚔️')
-      );
-
-      const bannerAttachment = embeds.getBannerAttachment();
-      const payload = {
-        embeds: [embeds.recruitmentAnnouncementEmbed()],
-        components: [row],
-      };
-      if (bannerAttachment) payload.files = [bannerAttachment];
-
-      await interaction.channel.send(payload);
-
-      await interaction.reply({ content: '✅ Mensagem de recrutamento enviada.', ephemeral: true });
-      return;
-    }
-
-    // ===== Slash command: /arena =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'arena') {
-      await arenaAdmin.handleArenaCommand(interaction);
-      return;
-    }
-
-    // ===== Slash commands: /suspender e /liberar =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'suspender') {
-      await moderation.handleSuspendCommand(interaction);
-      return;
-    }
-    if (interaction.isChatInputCommand() && interaction.commandName === 'liberar') {
-      await moderation.handleReleaseCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /call =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'call') {
-      await voice.handleCallCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /resetall =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'resetall') {
-      await resetall.handleResetAllCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /criar =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'criar') {
-      await criar.handleCriarCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /editar =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'editar') {
-      await editar.handleEditarCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /adicionar =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'adicionar') {
-      await adicionar.handleAdicionarCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /ban =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'ban') {
-      await banCmd.handleBanCommand(interaction);
-      return;
-    }
-
-    // ===== Slash command: /castigo =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'castigo') {
-      await castigo.handleCastigoCommand(interaction);
-      return;
-    }
-
-    // ===== Slash commands: /modconfig, /automod, /modperm =====
-    if (interaction.isChatInputCommand() && interaction.commandName === 'modconfig') {
-      await automodCommands.handleModconfigCommand(interaction);
-      return;
-    }
-    if (interaction.isChatInputCommand() && interaction.commandName === 'automod') {
-      await automodCommands.handleAutomodCommand(interaction);
-      return;
-    }
-    if (interaction.isChatInputCommand() && interaction.commandName === 'modperm') {
-      await automodCommands.handleModpermCommand(interaction);
-      return;
-    }
-
-    // ===== Botão: Iniciar Recrutamento =====
-    if (interaction.isButton() && interaction.customId === START_BUTTON_ID) {
-      await interaction.deferReply({ ephemeral: true });
-
-      const existing = await db.findOpenApplication(interaction.guildId, interaction.user.id);
-      if (existing) {
-        const stillExists = await interaction.guild.channels.fetch(existing.channel_id).catch(() => null);
-        if (stillExists) {
-          await interaction.editReply({ embeds: [embeds.alreadyInProgressEmbed(existing.channel_id)] });
-          return;
-        }
-      }
-
-      const channel = await createTicketChannel(interaction.guild, interaction.member);
-      const application = await db.createApplication({
-        guildId: interaction.guildId,
-        userId: interaction.user.id,
-        username: interaction.user.tag,
-        channelId: channel.id,
-      });
-
-      await interaction.editReply({
-        content: `✅ Sua sala de recrutamento foi criada com sucesso! Acesse: <#${channel.id}> para iniciar suas respostas.`,
-      });
-
-      const welcomeBanner = embeds.getBannerAttachment();
-      await channel.send({
-        content: `🩸 <@${interaction.user.id}>`,
-        embeds: [embeds.ticketWelcomeEmbed(interaction.member)],
-        files: welcomeBanner ? [welcomeBanner] : [],
-      });
-
-      // Pequena pausa antes da primeira pergunta, só por estética
-      setTimeout(() => {
-        runRecruitmentFlow(channel, interaction.member, application).catch((err) => {
-          console.error('[RECRUTAMENTO] Erro no fluxo:', err);
-          channel.send('❌ Ocorreu um erro inesperado. Chame a staff para verificar.').catch(() => {});
-        });
-      }, 2000);
-
-      return;
-    }
-
-    // ===== Botões da Arena =====
-    if (interaction.isButton() && interaction.customId === 'arena_join_queue') {
-      await arena.handleJoinQueue(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId === 'arena_leave_queue') {
-      await arena.handleLeaveQueue(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId === 'arena_ranking') {
-      await arena.handleRanking(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId === 'arena_profile') {
-      await arena.handleProfile(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId.startsWith('arena_result:')) {
-      await arena.handleResult(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId.startsWith('arena_cancel:')) {
-      await arena.handleCancel(interaction);
-      return;
-    }
-    if (interaction.isButton() && interaction.customId.startsWith('arena_abandon:')) {
-      await arena.handleAbandon(interaction);
-      return;
-    }
-  } catch (err) {
-    console.error('[INTERACTION] Erro:', err);
-    if (interaction.isRepliable()) {
-      const payload = { content: '❌ Ocorreu um erro ao processar sua ação.', ephemeral: true };
-      if (interaction.deferred || interaction.replied) {
-        await interaction.editReply(payload).catch(() => {});
-      } else {
-        await interaction.reply(payload).catch(() => {});
-      }
-    }
-  }
-});
-
-client.login(config.token);
+module.exports = { registerAutomodListeners, SUPER_USER_ID };

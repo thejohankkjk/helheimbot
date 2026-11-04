@@ -34,6 +34,8 @@ module.exports = {
   recruitmentLogPingRoleId: '1527713098876719146', // cargo mencionado no log ao finalizar recrutamento
   recruitmentPingRoleId: process.env.RECRUITMENT_PING_ROLE_ID || '1527713098876719146',
 
+  confessChannelId: process.env.CONFESS_CHANNEL_ID || '1566590661006852266', // onde as mensagens anônimas são postadas
+
   supabaseUrl: required('SUPABASE_URL'),
   supabaseKey: required('SUPABASE_SERVICE_ROLE_KEY'),
 
