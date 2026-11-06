@@ -24,7 +24,8 @@ module.exports = {
     '1531127593603043579',
     '1527713098876719146',
   ],
-  approvedRoleId: required('APPROVED_ROLE_ID'),
+  // Cargos gerais entregues ao concluir o registro (Membro 1 e Membro 2)
+  approvedRoleIds: ['1543330031340625971', '1527727118765789285'],
   ticketCategoryId: required('TICKET_CATEGORY_ID'),
   arenaCategoryId: process.env.ARENA_CATEGORY_ID || null, // se vazio, usa a mesma categoria dos tickets
   arenaChannelId: process.env.ARENA_CHANNEL_ID || null, // canal público de avisos da Arena (entrou na fila, match encontrado)

@@ -189,13 +189,13 @@ async function runRecruitmentFlow(channel, member, application) {
 }
 
 async function finalizeRegistration(channel, member, application) {
-  if (config.approvedRoleId) {
+  for (const roleId of config.approvedRoleIds) {
     try {
-      await member.roles.add(config.approvedRoleId, 'Registro concluído automaticamente');
+      await member.roles.add(roleId, 'Registro concluído automaticamente');
     } catch (err) {
-      console.error('[REGISTRO] Falha ao atribuir cargo geral:', err);
+      console.error(`[REGISTRO] Falha ao atribuir o cargo ${roleId}:`, err);
       await channel.send(
-        '⚠️ Não consegui atribuir o cargo geral automaticamente (verifique minhas permissões e a posição do cargo). A staff foi notificada.'
+        `⚠️ Não consegui atribuir um dos cargos gerais (\`${roleId}\`) automaticamente (verifique minhas permissões e a posição do cargo). A staff foi notificada.`
       );
     }
   }
