@@ -14,11 +14,13 @@ const path = require('path');
 const fs = require('fs');
 const config = require('./config');
 const { supabase } = require('./supabase');
-const { isModerator } = require('./arena/commands');
 
 const START_BUTTON_ID = 'confess_start';
 const MODAL_ID = 'confess_modal';
 const TEXT_INPUT_ID = 'confess_text';
+
+// Só esse ID pode usar /confess-log (dar/tirar permissão de ver autores) — nem staff, nem admin.
+const OWNER_ID = '463341116104900608';
 
 // Vermelho mais vivo/amigável, separado do vermelho escuro usado no resto do bot —
 // essa função tem uma identidade visual própria (clean, branco/cinza, vermelho de destaque).
@@ -36,9 +38,25 @@ const confessPanelCommand = new SlashCommandBuilder()
 
 const confessAutorCommand = new SlashCommandBuilder()
   .setName('confess-autor')
-  .setDescription('[Staff] Consulta quem enviou uma mensagem anônima específica')
-  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .setDescription('Consulta quem enviou uma mensagem anônima específica (acesso restrito)')
   .addIntegerOption((opt) => opt.setName('numero').setDescription('Número da mensagem (#)').setRequired(true).setMinValue(1))
+  .toJSON();
+
+const confessLogCommand = new SlashCommandBuilder()
+  .setName('confess-log')
+  .setDescription('[Restrito ao dono] Dá ou tira de alguém a permissão de ver quem manda cada mensagem anônima')
+  .addSubcommand((sub) =>
+    sub
+      .setName('add')
+      .setDescription('Dá a permissão de ver autores das mensagens anônimas')
+      .addUserOption((opt) => opt.setName('usuario').setDescription('Quem liberar').setRequired(true))
+  )
+  .addSubcommand((sub) =>
+    sub
+      .setName('remove')
+      .setDescription('Tira a permissão de ver autores das mensagens anônimas')
+      .addUserOption((opt) => opt.setName('usuario').setDescription('Quem remover').setRequired(true))
+  )
   .toJSON();
 
 const BANNER_PATH = path.join(__dirname, '..', 'assets', 'confess-banner.png');
@@ -149,8 +167,56 @@ async function handleConfessModalSubmit(interaction) {
   await interaction.reply({ content: `✅ Mensagem enviada anonimamente como **#${data.number}**! 💌`, ephemeral: true });
 }
 
+async function canSeeAuthors(interaction) {
+  if (interaction.user.id === OWNER_ID) return true; // dono sempre pode, por padrão
+  const { data } = await supabase
+    .from('confess_permissions')
+    .select('user_id')
+    .eq('guild_id', interaction.guildId)
+    .eq('user_id', interaction.user.id)
+    .maybeSingle();
+  return Boolean(data);
+}
+
+async function handleConfessLogCommand(interaction) {
+  if (interaction.user.id !== OWNER_ID) {
+    await interaction.reply({ content: '⛔ Só o dono do bot pode usar esse comando.', ephemeral: true });
+    return;
+  }
+
+  const sub = interaction.options.getSubcommand();
+  const usuario = interaction.options.getUser('usuario');
+
+  if (sub === 'add') {
+    const { error } = await supabase
+      .from('confess_permissions')
+      .upsert({ guild_id: interaction.guildId, user_id: usuario.id, added_by: interaction.user.id });
+    if (error) {
+      console.error('[CONFESS] Erro ao adicionar permissão:', error);
+      await interaction.reply({ content: '❌ Não consegui dar a permissão. Tenta de novo.', ephemeral: true });
+      return;
+    }
+    await interaction.reply({
+      content: `✅ <@${usuario.id}> agora pode ver quem manda cada mensagem anônima (\`/confess-autor\`).`,
+      ephemeral: true,
+    });
+  } else {
+    const { error } = await supabase
+      .from('confess_permissions')
+      .delete()
+      .eq('guild_id', interaction.guildId)
+      .eq('user_id', usuario.id);
+    if (error) {
+      console.error('[CONFESS] Erro ao remover permissão:', error);
+      await interaction.reply({ content: '❌ Não consegui remover a permissão. Tenta de novo.', ephemeral: true });
+      return;
+    }
+    await interaction.reply({ content: `✅ <@${usuario.id}> não pode mais ver autores das mensagens anônimas.`, ephemeral: true });
+  }
+}
+
 async function handleConfessAutorCommand(interaction) {
-  if (!isModerator(interaction.member) && !interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+  if (!(await canSeeAuthors(interaction))) {
     await interaction.reply({ content: '⛔ Você não tem permissão para usar esse comando.', ephemeral: true });
     return;
   }
@@ -183,10 +249,12 @@ async function handleConfessAutorCommand(interaction) {
 module.exports = {
   confessPanelCommand,
   confessAutorCommand,
+  confessLogCommand,
   handleConfessPanelCommand,
   handleConfessButton,
   handleConfessModalSubmit,
   handleConfessAutorCommand,
+  handleConfessLogCommand,
   START_BUTTON_ID,
   MODAL_ID,
   getPanelBannerAttachment,

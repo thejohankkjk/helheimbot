@@ -94,6 +94,7 @@ client.once('clientReady', async () => {
       castigo.castigoCommand,
       confess.confessPanelCommand,
       confess.confessAutorCommand,
+      confess.confessLogCommand,
       automodCommands.modconfigCommand,
       automodCommands.automodCommand,
       automodCommands.modpermCommand,
@@ -221,6 +222,10 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (interaction.isChatInputCommand() && interaction.commandName === 'confess-autor') {
       await confess.handleConfessAutorCommand(interaction);
+      return;
+    }
+    if (interaction.isChatInputCommand() && interaction.commandName === 'confess-log') {
+      await confess.handleConfessLogCommand(interaction);
       return;
     }
     if (interaction.isButton() && interaction.customId === confess.START_BUTTON_ID) {
