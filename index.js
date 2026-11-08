@@ -23,6 +23,7 @@ const resetall = require('./src/resetall');
 const banCmd = require('./src/ban');
 const castigo = require('./src/castigo');
 const confess = require('./src/confess');
+const typing = require('./src/typing');
 const criar = require('./src/criar');
 const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
@@ -95,6 +96,7 @@ client.once('clientReady', async () => {
       confess.confessPanelCommand,
       confess.confessAutorCommand,
       confess.confessLogCommand,
+      typing.typingCommand,
       automodCommands.modconfigCommand,
       automodCommands.automodCommand,
       automodCommands.modpermCommand,
@@ -226,6 +228,12 @@ client.on('interactionCreate', async (interaction) => {
     }
     if (interaction.isChatInputCommand() && interaction.commandName === 'confess-log') {
       await confess.handleConfessLogCommand(interaction);
+      return;
+    }
+
+    // ===== Slash command: /digitando =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'digitando') {
+      await typing.handleTypingCommand(interaction);
       return;
     }
     if (interaction.isButton() && interaction.customId === confess.START_BUTTON_ID) {
