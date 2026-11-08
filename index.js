@@ -29,6 +29,8 @@ const editar = require('./src/editar');
 const adicionar = require('./src/adicionar');
 const automod = require('./src/automod/index');
 const automodCommands = require('./src/automod/commands');
+const { HealthMonitor, createHealthServer } = require('./src/health');
+const status = require('./src/status');
 
 // Evita que o processo caia por causa de um erro não tratado isolado
 // (a Discloud reinicia o app quando ele morre, então isso reduz quedas desnecessárias)
@@ -39,20 +41,12 @@ process.on('uncaughtException', (err) => {
   console.error('[UNCAUGHT EXCEPTION]', err);
 });
 
-// Servidor HTTP mínimo de "estou vivo" — necessário em hosts como o Render, que
-// esperam um Web Service respondendo numa porta. Também serve como alvo pra um
-// serviço de ping externo (ex: UptimeRobot) evitar que o serviço "durma".
-// Não interfere em nada do bot em si.
+// Health Monitor & HTTP Server — substitui o keep-alive simples
+// Expõe: /health (status completo), /health/ready (readiness), /health/live (liveness)
+let healthServer = null;
+let healthMonitor = null;
 if (process.env.PORT) {
-  const http = require('http');
-  http
-    .createServer((req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/plain' });
-      res.end('Helheim bot online.');
-    })
-    .listen(process.env.PORT, () => {
-      console.log(`[KEEPALIVE] Servidor HTTP ouvindo na porta ${process.env.PORT}`);
-    });
+  // O servidor será criado após o client estar pronto
 }
 
 const client = new Client({
@@ -70,6 +64,23 @@ const START_BUTTON_ID = 'start_recruitment';
 
 client.once('clientReady', async () => {
   console.log(`[BOT] Online como ${client.user.tag}`);
+
+  // Initialize health monitor
+  healthMonitor = new HealthMonitor(client, {
+    maxReconnectAttempts: 10,
+    reconnectDelayBase: 5000,
+    maxReconnectDelay: 300000,
+  });
+  healthMonitor.startHealthChecks(30000); // Check every 30s
+
+  // Expose globally for /status command
+  global.__helheimHealthMonitor = healthMonitor;
+
+  // Start HTTP health server on the Render port
+  if (process.env.PORT) {
+    healthServer = createHealthServer(healthMonitor, process.env.PORT);
+    console.log(`[HEALTH] HTTP server started on port ${process.env.PORT}`);
+  }
 
   client.user.setPresence({
     activities: [{ name: 'Recrutamento & Gestão Helheim 🩸', type: ActivityType.Playing }],
@@ -100,6 +111,7 @@ client.once('clientReady', async () => {
       automodCommands.modconfigCommand,
       automodCommands.automodCommand,
       automodCommands.modpermCommand,
+      status.statusCommand,
     ];
 
     const rest = new REST({ version: '10' }).setToken(config.token);
@@ -136,6 +148,9 @@ client.on('channelDelete', async (channel) => {
 
 client.on('interactionCreate', async (interaction) => {
   try {
+    // Marca que uma interação foi RECEBIDA (gateway vivo)
+    global.__helheimHealthMonitor?.markInteractionProcessed?.();
+
     // ===== Slash command: /recrutamento =====
     if (interaction.isChatInputCommand() && interaction.commandName === 'recrutamento') {
       const row = new ActionRowBuilder().addComponents(
@@ -259,6 +274,12 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
+    // ===== Slash command: /status =====
+    if (interaction.isChatInputCommand() && interaction.commandName === 'status') {
+      await status.handleStatusCommand(interaction);
+      return;
+    }
+
     // ===== Botão: Iniciar Recrutamento =====
     if (interaction.isButton() && interaction.customId === START_BUTTON_ID) {
       await interaction.deferReply({ ephemeral: true });
@@ -360,3 +381,34 @@ client.login(config.token).catch((err) => {
   clearTimeout(loginWatchdog);
   process.exit(1);
 });
+
+// Graceful shutdown
+async function shutdown(signal) {
+  console.log(`[BOT] Recebido ${signal}, desligando graciosamente...`);
+
+  if (healthMonitor) {
+    await healthMonitor.shutdown();
+  }
+
+  if (healthServer) {
+    healthServer.close(() => {
+      console.log('[HEALTH] HTTP server closed');
+    });
+  }
+
+  // Give some time for in-flight requests
+  setTimeout(() => {
+    console.log('[BOT] Forçando saída');
+    process.exit(0);
+  }, 5000).unref();
+
+  // Try to destroy the client cleanly
+  try {
+    await client.destroy();
+  } catch (err) {
+    console.error('[BOT] Erro ao destruir client:', err);
+  }
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
