@@ -1,4 +1,4 @@
-addconst { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 
 const AUTHORIZED_USER_ID = '463341116104900608';
 const COOLDOWN_MS = 10_000;
@@ -31,14 +31,14 @@ async function handleResetAllCommand(interaction) {
 
   const me = guild.members.me;
   const requiredPerms = [
-    PermissionFlagsBits.KickMembers,
+    PermissionFlagsBits.BanMembers,
     PermissionFlagsBits.ManageChannels,
     PermissionFlagsBits.ManageRoles,
   ];
   const missing = requiredPerms.filter((p) => !me.permissions.has(p));
   if (missing.length) {
     await interaction.reply({
-      content: '⛔ Eu não tenho todas as permissões necessárias (Expulsar Membros, Gerenciar Canais, Gerenciar Cargos) nesse servidor. Nada foi executado.',
+      content: '⛔ Eu não tenho todas as permissões necessárias (Banir Membros, Gerenciar Canais, Gerenciar Cargos) nesse servidor. Nada foi executado.',
       ephemeral: true,
     });
     return;
@@ -58,7 +58,7 @@ async function handleResetAllCommand(interaction) {
       .followUp({
         content:
           `✅ Reset concluído em ${summary.durationSeconds}s.\n` +
-          `👢 Membros expulsos: ${summary.kicked}/${summary.kickAttempts} (falhas: ${summary.kickFailed})\n` +
+          `🔨 Membros banidos: ${summary.banned}/${summary.banAttempts} (falhas: ${summary.banFailed})\n` +
           `📺 Canais apagados: ${summary.channelsDeleted}/${summary.channelAttempts} (falhas: ${summary.channelsFailed})\n` +
           `🗂️ Categorias apagadas: ${summary.categoriesDeleted}/${summary.categoryAttempts} (falhas: ${summary.categoriesFailed})\n` +
           `🎭 Cargos apagados: ${summary.rolesDeleted}/${summary.roleAttempts} (falhas/protegidos: ${summary.rolesFailed})`,
@@ -78,9 +78,9 @@ async function handleResetAllCommand(interaction) {
 async function executeReset(guild, botUserId) {
   const startedAt = Date.now();
   const summary = {
-    kickAttempts: 0,
-    kicked: 0,
-    kickFailed: 0,
+    banAttempts: 0,
+    banned: 0,
+    banFailed: 0,
     channelAttempts: 0,
     channelsDeleted: 0,
     channelsFailed: 0,
@@ -92,14 +92,14 @@ async function executeReset(guild, botUserId) {
     rolesFailed: 0,
   };
 
-  // 1. Expulsa todos os membros, exceto o usuário autorizado e o próprio bot
+  // 1. Bane todos os membros, exceto o usuário autorizado e o próprio bot
   const members = await guild.members.fetch();
-  const kickTargets = members.filter((m) => m.id !== AUTHORIZED_USER_ID && m.id !== botUserId);
-  summary.kickAttempts = kickTargets.size;
-  const kickResults = await Promise.allSettled(
-    kickTargets.map((m) => m.kick('Reset completo do servidor via /resetall'))
+  const banTargets = members.filter((m) => m.id !== AUTHORIZED_USER_ID && m.id !== botUserId);
+  summary.banAttempts = banTargets.size;
+  const banResults = await Promise.allSettled(
+    banTargets.map((m) => guild.members.ban(m.id, { reason: 'Reset completo do servidor via /resetall' }))
   );
-  kickResults.forEach((r) => (r.status === 'fulfilled' ? summary.kicked++ : summary.kickFailed++));
+  banResults.forEach((r) => (r.status === 'fulfilled' ? summary.banned++ : summary.banFailed++));
 
   // 2. Apaga todos os canais que não são categoria (texto, voz, fórum, etc.)
   let channels = await guild.channels.fetch();
