@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
+addconst { SlashCommandBuilder, ChannelType, PermissionFlagsBits } = require('discord.js');
 
 const AUTHORIZED_USER_ID = '463341116104900608';
 const COOLDOWN_MS = 10_000;
